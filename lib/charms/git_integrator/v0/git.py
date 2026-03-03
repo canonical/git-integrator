@@ -342,6 +342,19 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
                         relation.id, GitProviderModel, component=self.charm.app
                     ).model_copy(update=filtered_connection_info)
 
+                    if (
+                        connection_info.get("authentication_method")
+                        == AuthenticationMethodEnum.CREDENTIALS
+                    ):
+                        model.ssh_private_key = "None"
+                        model.ssh_strict_host_key_checking = None
+                    elif (
+                        connection_info.get("authentication_method")
+                        == AuthenticationMethodEnum.SSH
+                    ):
+                        model.username = None
+                        model.personal_access_token = "None"
+
                 except pydantic.ValidationError:
                     pass
 
@@ -373,7 +386,38 @@ class GitRequires(ops.Object):
 
     def get_git_connection_information(self) -> dict[str, str]:
         """The git connection information from the relation."""
-        return self._provider_content
+        if not self._provider_content:
+            return {}
+
+        git_connection_information = {
+            "repository_url": self.repository_url,
+            "authentication_method": self.authentication_method,
+        }
+
+        if self.path:
+            git_connection_information["path"] = self.path
+
+        if self.tracking_ref:
+            git_connection_information["tracking_ref"] = self.tracking_ref
+
+        if self.authentication_method == AuthenticationMethodEnum.CREDENTIALS:
+            git_connection_information["credentials"] = self.credentials
+
+        if self.authentication_method == AuthenticationMethodEnum.SSH:
+            git_connection_information["ssh"] = {
+                "private_key": self.ssh_private_key,
+                "strict_host_key_checking": self.strict_host_key_checking,
+            }
+
+        # Ensure non-nullness of expected git connection info
+        if any(
+            value is None if not isinstance(value, dict) else None in value.values()
+            for value in git_connection_information.values()
+            if not isinstance(value, dict)
+        ):
+            return {}
+
+        return git_connection_information
 
     @property
     def repository_url(self) -> typing.Optional[str]:
@@ -414,7 +458,11 @@ class GitRequires(ops.Object):
     @property
     def strict_host_key_checking(self) -> typing.Optional[bool]:
         """Strict host key checking indicator for the git repository."""
-        return self._provider_content.get("ssh-strict-host-key-checking")
+        ssh_strict_host_key_checking = self._provider_content.get("ssh-strict-host-key-checking")
+        if ssh_strict_host_key_checking is None:
+            return None
+
+        return ssh_strict_host_key_checking == "true"
 
 
 class GitProvides(ops.Object):

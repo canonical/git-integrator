@@ -26,3 +26,35 @@ parts:
     source: .
     stage:
       - LICENSE
+
+config:
+  options:
+    repository_url:
+      type: string
+      description: Git repository URL
+    path:
+      type: string
+      description: Path within the repo that is in scope
+    tracking_ref:
+      type: string
+      description: Tracking reference of the repository
+    authentication_method:
+      type: string
+      description: |
+        Method used to authenticate with the git repository.
+        Non-null options include: credentials, ssh
+    credentials_username:
+      type: string
+      description: Username when using credentials authentication
+    credentials_personal_access_token_secret:
+      type: secret
+      description: |
+        URI of secret with personal access token when using credentials authentication
+    ssh_private_key_secret:
+      type: secret:
+      description: |
+        URI of secret with SSH private key when using SSH authentication
+    ssh_strict_host_key_checking:
+      type: boolean
+      default: false
+      description: Strict host key checking when using SSH authentication

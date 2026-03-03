@@ -86,7 +86,7 @@ def credentials_data(personal_access_token_secret):
         "repository-url": "https://github.com/org/repo",
         "path": "my/directory",
         "tracking-ref": "custom/branch",
-        "authentication-method": git.AuthenticationMethodEnum.CREDENTIALS,
+        "authentication-method": git.AuthenticationMethodEnum.CREDENTIALS.value,
         "username": "custom-user",
         "secret-personal-access-token": personal_access_token_secret.id,
     }
@@ -116,10 +116,38 @@ def ssh_data(ssh_private_key_secret):
         "repository-url": "https://github.com/org/repo",
         "path": "my/directory",
         "tracking-ref": "custom/branch",
-        "authentication-method": git.AuthenticationMethodEnum.SSH,
+        "authentication-method": git.AuthenticationMethodEnum.SSH.value,
         "secret-ssh-private-key": ssh_private_key_secret.id,
         "ssh-strict-host-key-checking": "false",
     }
+
+
+SSH_GIT_CONNECTION_INFORMATION = sorted(
+    {
+        "repository_url": "https://github.com/org/repo",
+        "path": "my/directory",
+        "tracking_ref": "custom/branch",
+        "authentication_method": git.AuthenticationMethodEnum.SSH.value,
+        "ssh": {
+            "private_key": "custom-ssh-private-key",
+            "strict_host_key_checking": False,
+        },
+    }
+)
+
+
+CREDENTIALS_GIT_CONNECTION_INFORMATION = sorted(
+    {
+        "repository_url": "https://github.com/org/repo",
+        "path": "my/directory",
+        "tracking_ref": "custom/branch",
+        "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
+        "credentials": {
+            "username": "custom-user",
+            "personal_access_token": "custom-persona-access-token",
+        },
+    }
+)
 
 
 @pytest.fixture(scope="function")
@@ -215,7 +243,6 @@ class TestGitRequires:
         requirer_context,
         requirer_credentials_state,
         requirer_credentials_relation,
-        credentials_data,
     ):
         """Ensure valid access to git connection with credentials."""
         with requirer_context(
@@ -229,10 +256,10 @@ class TestGitRequires:
                 in requirer_context.juju_log
             )
 
-            credentials_data.pop("secret-personal-access-token")
-            credentials_data["personal-access-token"] = "custom-personal-access-token"
-
-            assert manager.charm.requirer.get_git_connection_information() == credentials_data
+            assert (
+                sorted(manager.charm.requirer.get_git_connection_information())
+                == CREDENTIALS_GIT_CONNECTION_INFORMATION
+            )
             assert manager.charm.requirer.repository_url == "https://github.com/org/repo"
             assert manager.charm.requirer.path == "my/directory"
             assert manager.charm.requirer.tracking_ref == "custom/branch"
@@ -248,7 +275,7 @@ class TestGitRequires:
             assert manager.charm.requirer.strict_host_key_checking is None
 
     def test_ssh_private_key(
-        self, requirer_context, requirer_ssh_state, requirer_ssh_relation, ssh_data
+        self, requirer_context, requirer_ssh_state, requirer_ssh_relation
     ):
         """Ensure valid access to git connection with ssh key."""
         with requirer_context(
@@ -261,11 +288,10 @@ class TestGitRequires:
                 in requirer_context.juju_log
             )
 
-            ssh_data.pop("secret-ssh-private-key")
-            ssh_data["ssh-private-key"] = "custom-ssh-private-key"
-            ssh_data["ssh-strict-host-key-checking"] = False
-
-            assert manager.charm.requirer.get_git_connection_information() == ssh_data
+            assert (
+                sorted(manager.charm.requirer.get_git_connection_information())
+                == SSH_GIT_CONNECTION_INFORMATION
+            )
             assert manager.charm.requirer.repository_url == "https://github.com/org/repo"
             assert manager.charm.requirer.path == "my/directory"
             assert manager.charm.requirer.tracking_ref == "custom/branch"
@@ -282,7 +308,6 @@ class TestGitRequires:
         requirer_context,
         requirer_ssh_state,
         requirer_ssh_relation,
-        ssh_data,
         ssh_private_key_secret,
     ):
         """Ensure valid access to git connection with ssh key when secret changed."""
@@ -307,12 +332,10 @@ class TestGitRequires:
                 self.get_juju_log_line("INFO", git.GitConnectionInformationUpdatedEvent)
                 in requirer_context.juju_log
             )
-
-            ssh_data.pop("secret-ssh-private-key")
-            ssh_data["ssh-private-key"] = "updated-ssh-private-key"
-            ssh_data["ssh-strict-host-key-checking"] = False
-
-            assert manager.charm.requirer.get_git_connection_information() == ssh_data
+            assert (
+                sorted(manager.charm.requirer.get_git_connection_information())
+                == SSH_GIT_CONNECTION_INFORMATION
+            )
             assert manager.charm.requirer.repository_url == "https://github.com/org/repo"
             assert manager.charm.requirer.path == "my/directory"
             assert manager.charm.requirer.tracking_ref == "custom/branch"
