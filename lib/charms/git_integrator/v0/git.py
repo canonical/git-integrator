@@ -20,6 +20,7 @@ Markdown is supported, following the CommonMark specification.
 """
 
 import enum
+import functools
 import logging
 import pickle
 import typing
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 GIT_INTEGRATOR_ENDPOINT = "git"
 
 
-class AuthenticationMethodEnum(str, enum.Enum):
+class AuthenticationMethodEnum(enum.StrEnum):
     """Enum to encapsulate the possible Git authentication method options."""
 
     CREDENTIALS = "credentials"
@@ -53,12 +54,14 @@ class AuthenticationMethodEnum(str, enum.Enum):
 
 
 PersonalAccessTokenStr = typing.Annotated[
-    data_interfaces.OptionalSecretStr, pydantic.Field(default=None), "personal-access-token"
+    data_interfaces.OptionalSecretStr,
+    pydantic.Field(default=None, exclude=True),
+    "personal-access-token",
 ]
 
 SSHPrivateKeyStr = typing.Annotated[
     data_interfaces.OptionalSecretStr,
-    pydantic.Field(default=None),
+    pydantic.Field(default=None, exclude=True),
     "ssh-private-key",
 ]
 
@@ -191,7 +194,7 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
                 "tracking-ref",
                 "authentication-method",
                 "username",
-                "personal_access_token",
+                "personal-access-token",
                 "ssh-private-key",
                 "ssh-strict-host-key-checking",
             ]
@@ -276,22 +279,17 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
         self._handle_event(event, repository, content)
 
     @property
-    def provider_content(self) -> dict[str, str]:
+    def provider_content(self) -> typing.Optional[GitProviderModel]:
         """Data from the related git integrator charm."""
         if not self.relation:
-            return {}
+            return None
 
         try:
-            model = self.interface.build_model(
+            return self.interface.build_model(
                 self.relation.id, GitProviderModel, component=self.relation.app
             )
-            content = model.model_dump(
-                exclude={"secret_personal_access_token", "secret_ssh_private_key"}
-            )
-
-            return {key: value for key, value in content.items() if value is not None}
         except pydantic.ValidationError:
-            return {}
+            return None
 
 
 class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGitProviderModel]):
@@ -364,6 +362,19 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
             self.interface.write_model(relation.id, model)
 
 
+def ensure_non_null_provider_content(method):
+    """Decorator for null checks of properties in GitRequires."""
+
+    @functools.wraps(method)
+    def wrapper(self):
+        if self._provider_content is None:
+            return None
+
+        return method(self)
+
+    return wrapper
+
+
 class GitRequires(ops.Object):
     """A requirer handler encapsulating the git relation."""
 
@@ -409,60 +420,63 @@ class GitRequires(ops.Object):
                 "strict_host_key_checking": self.strict_host_key_checking,
             }
 
-        # Ensure non-nullness of expected git connection info
-        if any(
-            value is None if not isinstance(value, dict) else None in value.values()
-            for value in git_connection_information.values()
-            if not isinstance(value, dict)
-        ):
-            return {}
-
         return git_connection_information
 
     @property
+    @ensure_non_null_provider_content
     def repository_url(self) -> typing.Optional[str]:
         """The git repository url."""
-        return self._provider_content.get("repository-url")
+        return self._provider_content.repository_url
 
     @property
+    @ensure_non_null_provider_content
     def path(self) -> typing.Optional[str]:
         """The path within the git repository."""
-        return self._provider_content.get("path")
+        return self._provider_content.path
 
     @property
+    @ensure_non_null_provider_content
     def tracking_ref(self) -> typing.Optional[str]:
         """The git repository tracking ref."""
-        return self._provider_content.get("tracking-ref")
+        return self._provider_content.tracking_ref
 
     @property
+    @ensure_non_null_provider_content
     def authentication_method(self) -> typing.Optional[str]:
         """The git repository authentication method."""
-        return self._provider_content.get("authentication-method")
+        return self._provider_content.authentication_method.value
 
     @property
     def credentials(self) -> dict[str, str]:
         """The git repository credentials."""
-        if self.authentication_method != AuthenticationMethodEnum.CREDENTIALS:
+        if (
+            not self._provider_content
+            or self.authentication_method != AuthenticationMethodEnum.CREDENTIALS.value
+        ):
             return {}
 
         return {
-            "username": self._provider_content.get("username"),
-            "personal_access_token": self._provider_content.get("personal-access-token"),
+            "username": self._provider_content.username,
+            "personal_access_token": self._provider_content.personal_access_token,
         }
 
     @property
+    @ensure_non_null_provider_content
     def ssh_private_key(self) -> typing.Optional[str]:
         """The git repository authentication SSH private key."""
-        return self._provider_content.get("ssh-private-key")
-
-    @property
-    def strict_host_key_checking(self) -> typing.Optional[bool]:
-        """Strict host key checking indicator for the git repository."""
-        ssh_strict_host_key_checking = self._provider_content.get("ssh-strict-host-key-checking")
-        if ssh_strict_host_key_checking is None:
+        if self.authentication_method != AuthenticationMethodEnum.SSH.value:
             return None
 
-        return ssh_strict_host_key_checking == "true"
+        return self._provider_content.ssh_private_key
+
+    @property
+    @ensure_non_null_provider_content
+    def strict_host_key_checking(self) -> typing.Optional[bool]:
+        """Strict host key checking indicator for the git repository."""
+        if self.authentication_method != AuthenticationMethodEnum.SSH.value:
+            return None
+
+        return self._provider_content.ssh_strict_host_key_checking
 
 
 class GitProvides(ops.Object):

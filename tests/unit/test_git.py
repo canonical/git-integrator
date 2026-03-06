@@ -13,6 +13,7 @@ import charms.git_integrator.v0.git as git
 import ops
 import ops.testing
 import pytest
+from conftest import CREDENTIALS_GIT_CONNECTION_INFORMATION, SSH_GIT_CONNECTION_INFORMATION
 
 logger = logging.getLogger(__name__)
 
@@ -72,82 +73,12 @@ def requirer_context():
 
 
 @pytest.fixture(scope="function")
-def personal_access_token_secret():
-    return ops.testing.Secret(
-        {
-            "personal-access-token": "custom-personal-access-token",
-        },
-    )
-
-
-@pytest.fixture(scope="function")
-def credentials_data(personal_access_token_secret):
-    return {
-        "repository-url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking-ref": "custom/branch",
-        "authentication-method": git.AuthenticationMethodEnum.CREDENTIALS.value,
-        "username": "custom-user",
-        "secret-personal-access-token": personal_access_token_secret.id,
-    }
-
-
-@pytest.fixture(scope="function")
 def requirer_credentials_relation(credentials_data):
     return ops.testing.Relation(
         "git",
         interface="git",
         remote_app_data=credentials_data,
     )
-
-
-@pytest.fixture(scope="function")
-def ssh_private_key_secret():
-    return ops.testing.Secret(
-        {
-            "ssh-private-key": "custom-ssh-private-key",
-        },
-    )
-
-
-@pytest.fixture(scope="function")
-def ssh_data(ssh_private_key_secret):
-    return {
-        "repository-url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking-ref": "custom/branch",
-        "authentication-method": git.AuthenticationMethodEnum.SSH.value,
-        "secret-ssh-private-key": ssh_private_key_secret.id,
-        "ssh-strict-host-key-checking": "false",
-    }
-
-
-SSH_GIT_CONNECTION_INFORMATION = sorted(
-    {
-        "repository_url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking_ref": "custom/branch",
-        "authentication_method": git.AuthenticationMethodEnum.SSH.value,
-        "ssh": {
-            "private_key": "custom-ssh-private-key",
-            "strict_host_key_checking": False,
-        },
-    }
-)
-
-
-CREDENTIALS_GIT_CONNECTION_INFORMATION = sorted(
-    {
-        "repository_url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking_ref": "custom/branch",
-        "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
-        "credentials": {
-            "username": "custom-user",
-            "personal_access_token": "custom-persona-access-token",
-        },
-    }
-)
 
 
 @pytest.fixture(scope="function")
@@ -265,7 +196,7 @@ class TestGitRequires:
             assert manager.charm.requirer.tracking_ref == "custom/branch"
             assert (
                 manager.charm.requirer.authentication_method
-                is git.AuthenticationMethodEnum.CREDENTIALS
+                == git.AuthenticationMethodEnum.CREDENTIALS
             )
             assert manager.charm.requirer.credentials == {
                 "username": "custom-user",
@@ -274,9 +205,7 @@ class TestGitRequires:
             assert manager.charm.requirer.ssh_private_key is None
             assert manager.charm.requirer.strict_host_key_checking is None
 
-    def test_ssh_private_key(
-        self, requirer_context, requirer_ssh_state, requirer_ssh_relation
-    ):
+    def test_ssh_private_key(self, requirer_context, requirer_ssh_state, requirer_ssh_relation):
         """Ensure valid access to git connection with ssh key."""
         with requirer_context(
             requirer_context.on.relation_changed(requirer_ssh_relation), requirer_ssh_state
@@ -295,7 +224,7 @@ class TestGitRequires:
             assert manager.charm.requirer.repository_url == "https://github.com/org/repo"
             assert manager.charm.requirer.path == "my/directory"
             assert manager.charm.requirer.tracking_ref == "custom/branch"
-            assert manager.charm.requirer.authentication_method is git.AuthenticationMethodEnum.SSH
+            assert manager.charm.requirer.authentication_method == git.AuthenticationMethodEnum.SSH
             assert manager.charm.requirer.credentials == {}
             assert manager.charm.requirer.ssh_private_key == "custom-ssh-private-key"
             assert (
@@ -339,7 +268,7 @@ class TestGitRequires:
             assert manager.charm.requirer.repository_url == "https://github.com/org/repo"
             assert manager.charm.requirer.path == "my/directory"
             assert manager.charm.requirer.tracking_ref == "custom/branch"
-            assert manager.charm.requirer.authentication_method is git.AuthenticationMethodEnum.SSH
+            assert manager.charm.requirer.authentication_method == git.AuthenticationMethodEnum.SSH
             assert manager.charm.requirer.credentials == {}
             assert manager.charm.requirer.ssh_private_key == "updated-ssh-private-key"
             assert (
