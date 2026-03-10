@@ -94,7 +94,6 @@ LIBAPI = 0
 # to 0 if you are raising the major API version
 LIBPATCH = 1
 
-
 logger = logging.getLogger(__name__)
 
 GIT_INTEGRATOR_ENDPOINT = "git"
