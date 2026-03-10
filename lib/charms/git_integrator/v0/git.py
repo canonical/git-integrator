@@ -1,22 +1,75 @@
-"""TODO: Add a proper docstring here.
+"""Library to manage the relation provided by the Git Integrator charm.
 
-This is a placeholder docstring for this charm library. Docstrings are
-presented on Charmhub and updated whenever you push a new version of the
-library.
+This library contains the Requires and Provides classes for handling the relation
+between provider of the git relation interface (Git Integrator) and also the requirers.
 
-Complete documentation about creating and documenting libraries can be found
-in the SDK docs at https://juju.is/docs/sdk/libraries.
+### Requirer Charm
 
-See `charmcraft publish-lib` and `charmcraft fetch-lib` for details of how to
-share and consume charm libraries. They serve to enhance collaboration
-between charmers. Use a charmer's libraries for classes that handle
-integration with their charm.
+The following presents an example usage of the GitIntegratorRequires class:
 
-Bear in mind that new revisions of the different major API versions (v0, v1,
-v2 etc) are maintained independently.  You can continue to update v0 and v1
-after you have pushed v3.
+```python
+import charms.git_integrator.v0.git as git
 
-Markdown is supported, following the CommonMark specification.
+
+class CharmThatNeedsGit(ops.CharmBase):
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+
+        self.git_requirer = git.GitRequires(
+            self,
+            "git", # relation endpoint
+            callback=self.reconcile,
+        )
+
+        self.framework.observer(
+            self.git_requirer.on.git_connection_information_update,
+            self.print_git_connection_information,
+        )
+
+    def reconcile(self, event) -> None:
+        # Reconciler method for this charm
+
+        self.git_requirer.get_git_connection_information() # dict with git connection details
+
+        self.git_requirer.repository_url
+        self.git_requirer.path
+        self.git_requirer.tracking_ref
+        self.git_requirer.authentication_method
+        self.git_requirer.credentials # dict with username and personal_access_token
+        self.git_requirer.ssh_private_key
+        self.git_requirer.ssh_strict_host_key_checking
+
+    def print_git_connection_information(self) -> None:
+        # Print the git connection information
+        print(f"New git connection info: {self.git_requirer.get_connection_information()}")
+
+
+### Provider Charm
+
+The following presents an example usage of the GitProvides class:
+
+```python
+import charms.git_integrator.v0.git as git
+
+
+class GitIntegrator(ops.CharmBase):
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+
+        self.git_provider = git.GitProvides(
+            self,
+            "git", # relation endpoint
+            self.reconcile,
+        )
+
+    def reconcile(self, event) -> None:
+        # Reconciler method for this charm
+
+        self.git_provider.update_git_connection_information({
+            "repository_url": "https://github.com/my/repo",
+            "path": "custom/sub/directory",
+        })
+```
 """
 
 import enum
@@ -382,18 +435,24 @@ class GitRequires(ops.Object):
         self,
         charm: ops.CharmBase,
         relation_name: str,
-        callback: typing.Callable,
+        callback: typing.Optional[typing.Callable] = None,
     ):
         super().__init__(charm, relation_name)
 
         self._requirer_handler = GitRequirerEventHandler(charm, relation_name, GitProviderModel)
         self._provider_content = self._requirer_handler.provider_content
 
-        for event in [
-            self._requirer_handler.on.git_connection_information_updated,
-            charm.on[relation_name].relation_broken,
-        ]:
-            self.framework.observe(event, callback)
+        if callback:
+            for event in [
+                self._requirer_handler.on.git_connection_information_updated,
+                charm.on[relation_name].relation_broken,
+            ]:
+                self.framework.observe(event, callback)
+
+    @property
+    def on(self) -> GitProvidesEvents[TGitProviderModel]:
+        """ops.CharmEvents containing custom events for this relation."""
+        return self._requirer_handler.on
 
     def get_git_connection_information(self) -> dict[str, str]:
         """The git connection information from the relation."""

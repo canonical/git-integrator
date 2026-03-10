@@ -1,7 +1,6 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-
 import charms.git_integrator.v0.git as git
 import ops.testing
 import pytest

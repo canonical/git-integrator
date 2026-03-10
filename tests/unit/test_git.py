@@ -148,6 +148,13 @@ class TestGitRequires:
             level=log_level, message=f"§Requirer reacting to event: {event}"
         )
 
+    def test_on(self, requirer_context, requirer_credentials_state):
+        """Ensure that custom events are accessible."""
+        with requirer_context(requirer_context.on.start(), requirer_credentials_state) as manager:
+            assert isinstance(manager.charm.requirer.on, ops.CharmEvents)
+
+            assert hasattr(manager.charm.requirer.on, "git_connection_information_updated")
+
     @pytest.mark.parametrize("state", ["requirer_credentials_state", "requirer_ssh_state"])
     def test_missing_git_relation(self, request, requirer_context, state):
         """Ensure safe method/property access when git relation is missing."""
