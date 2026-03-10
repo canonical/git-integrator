@@ -48,29 +48,35 @@ def credentials_data(personal_access_token_secret):
     }
 
 
-SSH_GIT_CONNECTION_INFORMATION = sorted(
-    {
-        "repository_url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking_ref": "custom/branch",
-        "authentication_method": git.AuthenticationMethodEnum.SSH.value,
-        "ssh": {
-            "private_key": "custom-ssh-private-key",
-            "strict_host_key_checking": False,
-        },
-    }
+SSH_GIT_CONNECTION_INFORMATION = dict(
+    sorted(
+        {
+            "repository_url": "https://github.com/org/repo",
+            "path": "my/directory",
+            "tracking_ref": "custom/branch",
+            "authentication_method": git.AuthenticationMethodEnum.SSH.value,
+            "ssh": {
+                "private_key": "custom-ssh-private-key",
+                "strict_host_key_checking": False,
+            },
+        }.items(),
+        key=lambda item: item[0],
+    )
 )
 
 
-CREDENTIALS_GIT_CONNECTION_INFORMATION = sorted(
-    {
-        "repository_url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking_ref": "custom/branch",
-        "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
-        "credentials": {
-            "username": "custom-user",
-            "personal_access_token": "custom-persona-access-token",
-        },
-    }
+CREDENTIALS_GIT_CONNECTION_INFORMATION = dict(
+    sorted(
+        {
+            "repository_url": "https://github.com/org/repo",
+            "path": "my/directory",
+            "tracking_ref": "custom/branch",
+            "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
+            "credentials": {
+                "username": "custom-user",
+                "personal_access_token": "custom-personal-access-token",
+            },
+        }.items(),
+        key=lambda item: item[0],
+    )
 )
