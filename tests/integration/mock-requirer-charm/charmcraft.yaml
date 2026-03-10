@@ -1,0 +1,31 @@
+# This file configures Charmcraft.
+# See https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/
+type: charm
+name: mock-requirer-charm
+title: Mock Git Requirer Charm
+summary: A mock Git requirer charm to help test the Git Integrator charm.
+description: |
+  A mock Git requirer charm to help test the Git Integrator charm.
+
+  The charm exposes various actions to surface relation data. These actions
+  can be used by the integration tests to assert expected relation data.
+
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+parts:
+  charm:
+    plugin: uv
+    source: .
+    build-snaps:
+      - astral-uv
+  add-charm-libs:
+    plugin: dump
+    source: .
+    stage:
+      - lib
+
+actions:
+  get-git-connection-information:
+    description: Get the git connection information.
