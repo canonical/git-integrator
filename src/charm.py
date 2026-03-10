@@ -2,7 +2,7 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Charm the application."""
+"""The Git Integrator charm."""
 
 import logging
 

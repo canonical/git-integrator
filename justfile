@@ -18,21 +18,6 @@ lint: (clean-mock-charm-libs)
 format: (clean-mock-charm-libs)
 	uv tool run tox -e format
 
-# Run integration tests
-integration debug="": (clean-mock-charm-libs)
-	#!/usr/bin/bash
-	charmcraft pack
-
-	cp -r lib tests/integration/mock-core-charm/lib
-
-	trap 'just clean-mock-charm-libs' EXIT
-
-	cd tests/integration/mock-core-charm && charmcraft pack && cd -
-
-	pdb_options=$(if [ -n "${debug}" ]; then echo "--pdb"; fi)
-
-	JUJU_MODEL=test uv tool run tox -e integration -- ${pdb_options}
-
 # Run unit tests
 unit:
 	uv tool run tox -e unit
