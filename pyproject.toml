@@ -29,12 +29,6 @@ unit = [
     "ops[testing]",
     "pytest",
 ]
-# Dependencies of integration tests
-integration = [
-    "jubilant",
-    "pytest",
-    "PyYAML",
-]
 
 # Testing tools configuration
 [tool.coverage.run]
