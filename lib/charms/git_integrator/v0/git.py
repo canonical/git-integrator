@@ -2,6 +2,10 @@
 
 This library contains the Requires and Provides classes for handling the relation
 between provider of the git relation interface (Git Integrator) and also the requirers.
+Both the Requires and Provides classes supports multiple relations over the git
+interfaces (the Git Integrator charm can share data with multiple downstream requirer
+apps, and similarly, a requirer app can receive data from multiple upstream Git
+Integrator charms.)
 
 ### Requirer Charm
 
@@ -31,13 +35,11 @@ class CharmThatNeedsGit(ops.CharmBase):
 
         self.git_requirer.get_git_connection_information() # dict with git connection details
 
-        self.git_requirer.repository_url
-        self.git_requirer.path
-        self.git_requirer.tracking_ref
-        self.git_requirer.authentication_method
-        self.git_requirer.credentials # dict with username and personal_access_token
-        self.git_requirer.ssh_private_key
-        self.git_requirer.ssh_strict_host_key_checking
+        # git connection details of a specific relation
+        git_relations = self.model.relations["git"]
+        for relation in git_relations:
+            self.git_requirer.get_git_connection_information_for_relation(relation.id)
+
 
     def print_git_connection_information(self) -> None:
         # Print the git connection information
