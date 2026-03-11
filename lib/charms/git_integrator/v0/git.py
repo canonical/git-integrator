@@ -126,7 +126,7 @@ class GitProviderModel(data_interfaces.BaseCommonModel):
     path: str | None = pydantic.Field(default=None)
     tracking_ref: str | None = pydantic.Field(default=None)
 
-    authentication_method: AuthenticationMethodEnum
+    authentication_method: AuthenticationMethodEnum | None = pydantic.Field(default=None)
 
     username: str | None = pydantic.Field(default=None)
     personal_access_token: PersonalAccessTokenStr = pydantic.Field(default=None)

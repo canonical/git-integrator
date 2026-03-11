@@ -356,6 +356,28 @@ class TestGitProvides:
                     }
                 )
 
+    def test_update_git_connection_info_on_empty_relation(self, provider_context, provider_state):
+        """Ensure proper update of git connection info on an empty relation."""
+        empty_provider_git_relation = ops.testing.Relation(GIT_RELATION_INTERFACE)
+
+        provider_state = dataclasses.replace(
+            provider_state, relations=[empty_provider_git_relation], secrets=[]
+        )
+
+        with provider_context(provider_context.on.start(), provider_state) as manager:
+            manager.run()
+
+            # Should not surface pydantic.ValidationError when building model to update
+            # with provided dictionary
+            manager.charm.provider.update_git_connection_info({"repository_url": "test_repo_url"})
+
+            assert (
+                manager.charm.model.get_relation(GIT_RELATION_INTERFACE)
+                .data[manager.charm.app]
+                .get("repository-url")
+                == "test_repo_url"
+            )
+
     def test_update_git_connection_info(
         self, provider_context, provider_state, provider_git_relation
     ):
