@@ -25,7 +25,7 @@ class CharmThatNeedsGit(ops.CharmBase):
             callback=self.reconcile,
         )
 
-        self.framework.observer(
+        self.framework.observe(
             self.git_requirer.on.git_connection_information_update,
             self.print_git_connection_information,
         )
@@ -43,8 +43,8 @@ class CharmThatNeedsGit(ops.CharmBase):
 
     def print_git_connection_information(self) -> None:
         # Print the git connection information
-        print(f"New git connection info: {self.git_requirer.get_connection_information()}")
-
+        print(f"New git connection info: {self.git_requirer.get_git_connection_information()}")
+```
 
 ### Provider Charm
 
@@ -215,11 +215,13 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
         request_model: type[TGitProviderModel],
         unique_key: str = "",
     ):
-        """Builds an Git requirer event handler."""
+        """Builds a Git requirer event handler."""
         super().__init__(charm, relation_name, unique_key)
+
         self.charm = charm
         self.component = self.charm.app
         self.request_model = request_model
+
         self.interface = data_interfaces.OpsRelationRepositoryInterface(
             charm.model, relation_name, request_model
         )
@@ -270,18 +272,18 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
             return
 
         if not relation:
-            logging.warning(
+            logger.warning(
                 f"Received secret {event.secret.label} but couldn't parse, seems irrelevant"
             )
             return
 
         if relation.name != self.relation_name:
-            logging.warning("Secret changed on wrong relation")
+            logger.warning("Secret changed on wrong relation")
             return
 
         try:
             event.secret.get_info()
-            logging.warning("Secret changed event ignored for Secret Owner")
+            logger.warning("Secret changed event ignored for Secret Owner")
             return
         except ops.SecretNotFoundError:
             pass
@@ -324,16 +326,28 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
 
     @property
     def provider_content(self) -> dict[int, GitProviderModel]:
-        """Data from the related git integrator charms."""
-        try:
-            return {
-                relation.id: self.interface.build_model(
-                    relation.id, GitProviderModel, component=relation.app
-                )
-                for relation in self.charm.model.relations[self.relation_name]
-            }
-        except pydantic.ValidationError:
-            return {}
+        """Data from valid related git integrator charms.
+
+        Only returns pydantic models for relations that have valid relation data.
+        If issues occur while building pydantic models from relation data, the
+        relation is not included in the returned models.
+        """
+
+        def _build_model(
+            interface: data_interfaces.OpsRelationRepositoryInterface, relation: ops.Relation
+        ) -> typing.Optional[GitProviderModel]:
+            """Helper to build pydantic model for relation."""
+            try:
+                return interface.build_model(relation.id, GitProviderModel, component=relation.app)
+            except pydantic.ValidationError:
+                return None
+
+        models = {
+            relation.id: _build_model(self.interface, relation)
+            for relation in self.charm.model.relations[self.relation_name]
+        }
+
+        return {key: value for key, value in models.items() if value is not None}
 
 
 class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGitProviderModel]):
@@ -347,6 +361,7 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
     ):
         """Builds an Git provider event handler."""
         super().__init__(charm, relation_name, unique_key)
+
         self.component = self.charm.app
 
         self.interface = data_interfaces.OpsRelationRepositoryInterface(
@@ -357,11 +372,17 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
     def _on_relation_changed_event(self, event: ops.RelationChangedEvent) -> None:
         pass
 
-    def update_git_connection_info(
+    def update_git_connection_info(  # noqa: C901
         self,
         connection_info: dict[str, str],
     ):
-        """Update data to send to related charms."""
+        """Update data to send to related charms.
+
+        Do nothing if no relations present, unit is not leader, or no connection info
+        provided. Otherwise, build pydantic model from existing relation data or a new
+        model if no data set yet in relation, and write the model to the relation with
+        provided updates in connection_info.
+        """
         if not self.interface.relations:
             return
 
@@ -372,7 +393,9 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
             return
 
         filtered_connection_info = {
-            key: value for key, value in connection_info.items() if not key.startswith("secret")
+            key: value
+            for key, value in connection_info.items()
+            if not key.startswith("secret") and key != "request_id"
         }
 
         for relation in self.interface.relations:
@@ -388,17 +411,25 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
                         connection_info.get("authentication_method")
                         == AuthenticationMethodEnum.CREDENTIALS
                     ):
+                        # nullify previously set SSH credentails
+                        # avoid deleting juju secret to avoid issues if SSH set again
                         model.ssh_private_key = "None"
                         model.ssh_strict_host_key_checking = None
                     elif (
                         connection_info.get("authentication_method")
                         == AuthenticationMethodEnum.SSH
                     ):
+                        # nullify previously set credentails
+                        # similarly, avoid deleting juju secret to avoid issues
+                        # if personal_access_token set again in the future
                         model.username = None
                         model.personal_access_token = "None"
 
-                except pydantic.ValidationError:
-                    pass
+                except pydantic.ValidationError as e:
+                    if not all(error.get("type") == "missing" for error in e.errors()):
+                        # Only re-raise exception if validation error occurs for
+                        # reasons other than missing data (data not yet set in relation)
+                        raise e
 
             if not model:
                 model = GitProviderModel(**filtered_connection_info)
@@ -418,12 +449,13 @@ class GitRequires(ops.Object):
         super().__init__(charm, relation_name)
 
         self._requirer_handler = GitRequirerEventHandler(charm, relation_name, GitProviderModel)
-        self._provider_content = self._requirer_handler.provider_content
-        self._relations = charm.model.relations[relation_name]
+        self._charm = charm
+        self._relation_name = relation_name
 
         if callback:
             for event in [
                 self._requirer_handler.on.git_connection_information_updated,
+                charm.on[relation_name].relation_joined,
                 charm.on[relation_name].relation_broken,
             ]:
                 self.framework.observe(event, callback)
@@ -436,7 +468,12 @@ class GitRequires(ops.Object):
     @property
     def relations(self) -> list[ops.Relation]:
         """Relations for the git interface."""
-        return list(self._relations)
+        return list(self._charm.model.relations[self.relation_name])
+
+    @property
+    def _provider_content(self) -> dict[int, GitProviderModel]:
+        """Mapping of relation id to provider content for all upstream git integrators."""
+        return self._requirer_handler.provider_content
 
     def get_git_connection_information_for_relation(self, relation_id: int) -> dict:
         """The git connection information for a relation."""
@@ -488,7 +525,11 @@ class GitProvides(ops.Object):
     ):
         super().__init__(charm, relation_name)
 
-        self.framework.observe(charm.on[relation_name].relation_broken, callback)
+        for event in [
+            charm.on[relation_name].relation_joined,
+            charm.on[relation_name].relation_broken,
+        ]:
+            self.framework.observe(event, callback)
 
         if not charm.model.relations.get(relation_name):
             self._provider_handler = None
@@ -497,8 +538,47 @@ class GitProvides(ops.Object):
         self._provider_handler = GitProviderEventHandler(charm, relation_name)
 
     def update_git_connection_info(self, connection_info: dict[str, str]):
-        """Update git connection info appropriately in all relations."""
+        """Update git connection info appropriately in all relations.
+
+        Args:
+            connection_info (dict[str, str]): fields to update in the pydantic model
+                Valid keys:
+                - repository_url
+                - path
+                - tracking_ref
+                - authentication_method
+                - username (if authentication_method == "credentials")
+                - personal_access_token (if authentication_method == "credentials")
+                - ssh_private_key (if authentication_method == "ssh")
+                - ssh_strict_host_key_checking (optional if authentication_method == "ssh")
+        """
         if not self._provider_handler:
             return
+
+        if not all(key in GitProviderModel.model_fields for key in connection_info):
+            raise ValueError("Invalid keys in provided connection info")
+
+        if any(
+            key in connection_info
+            for key in ["secret_personal_access_token", "secret_ssh_private_key", "request_id"]
+        ):
+            raise ValueError("Prohibited fields in provided connection info")
+
+        credentials_fields = ["username", "personal_access_token"]
+        ssh_fields = ["ssh_private_key", "ssh_strict_host_key_checking"]
+
+        if connection_info.get("authentication_method") == AuthenticationMethodEnum.CREDENTIALS:
+            if not all(key in connection_info for key in credentials_fields):
+                raise ValueError("Missing required credentials fields in provided connection info")
+
+            if any(key in connection_info for key in ssh_fields):
+                raise ValueError("Unexpected SSH fields in provided connection info")
+
+        elif connection_info.get("authentication_method") == AuthenticationMethodEnum.SSH:
+            if "ssh_private_key" not in connection_info:
+                raise ValueError("Missing required SSH fields in provided connection info")
+
+            if any(key in connection_info for key in credentials_fields):
+                raise ValueError("Unexpected credentials fields in provided connection info")
 
         self._provider_handler.update_git_connection_info(connection_info)

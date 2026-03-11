@@ -297,6 +297,65 @@ class TestGitProvides:
             # should no-op without errors
             manager.charm.provider.update_git_connection_info({"path": "new/path"})
 
+    def test_update_git_connection_info_invalid(
+        self, provider_context, provider_state, provider_git_relation
+    ):
+        """Ensure proper handling of invalid git connection info updates."""
+        with provider_context(
+            provider_context.on.relation_changed(provider_git_relation), provider_state
+        ) as manager:
+            manager.run()
+
+            assert (
+                provider_state.get_relation(provider_git_relation.id).local_app_data.get("path")
+                == "my/directory"
+            )
+
+            with pytest.raises(ValueError, match="Invalid keys in provided connection info"):
+                manager.charm.provider.update_git_connection_info({"invalid_key": "invalid_value"})
+
+            with pytest.raises(ValueError, match="Prohibited fields in provided connection info"):
+                manager.charm.provider.update_git_connection_info(
+                    {"secret_personal_access_token": "random"}
+                )
+
+            with pytest.raises(
+                ValueError, match="Missing required credentials fields in provided connection info"
+            ):
+                manager.charm.provider.update_git_connection_info(
+                    {"authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value}
+                )
+
+            with pytest.raises(
+                ValueError, match="Unexpected SSH fields in provided connection info"
+            ):
+                manager.charm.provider.update_git_connection_info(
+                    {
+                        "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
+                        "username": "test_username",
+                        "personal_access_token": "test_personal_access_token",
+                        "ssh_private_key": "test_private_key",
+                    }
+                )
+
+            with pytest.raises(
+                ValueError, match="Missing required SSH fields in provided connection info"
+            ):
+                manager.charm.provider.update_git_connection_info(
+                    {"authentication_method": git.AuthenticationMethodEnum.SSH.value}
+                )
+
+            with pytest.raises(
+                ValueError, match="Unexpected credentials fields in provided connection info"
+            ):
+                manager.charm.provider.update_git_connection_info(
+                    {
+                        "authentication_method": git.AuthenticationMethodEnum.SSH.value,
+                        "ssh_private_key": "test_private_key",
+                        "username": "test_username",
+                    }
+                )
+
     def test_update_git_connection_info(
         self, provider_context, provider_state, provider_git_relation
     ):
