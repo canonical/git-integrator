@@ -421,9 +421,7 @@ class TestGitProvides:
                     {"personal-access-token": "new-personal-access-token"}
                 )
 
-    def test_git_relation_broken(
-        self, provider_context, provider_state, provider_git_relation, credentials_data
-    ):
+    def test_git_relation_broken(self, provider_context, provider_state, provider_git_relation):
         """Ensure invoke of reconciler callback on git integratorrelation broken."""
         with provider_context(
             provider_context.on.relation_broken(provider_git_relation), provider_state

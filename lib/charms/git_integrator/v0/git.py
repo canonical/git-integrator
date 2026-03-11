@@ -407,21 +407,22 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
                         relation.id, GitProviderModel, component=self.charm.app
                     ).model_copy(update=filtered_connection_info)
 
+                    # set secret fields to "None" to nullify, as setting to None
+                    # results in deletion of all revisions for underlying juju secret.
+                    # if the field is set to a value down the line, relation id to secret
+                    # mapping conflcits may be encountered in data_interfaces.
+                    # also, downstream related charms may encounter errors if they
+                    # concurrently access the secret while its revisions are removed
                     if (
                         connection_info.get("authentication_method")
                         == AuthenticationMethodEnum.CREDENTIALS
                     ):
-                        # nullify previously set SSH credentails
-                        # avoid deleting juju secret to avoid issues if SSH set again
                         model.ssh_private_key = "None"
                         model.ssh_strict_host_key_checking = None
                     elif (
                         connection_info.get("authentication_method")
                         == AuthenticationMethodEnum.SSH
                     ):
-                        # nullify previously set credentails
-                        # similarly, avoid deleting juju secret to avoid issues
-                        # if personal_access_token set again in the future
                         model.username = None
                         model.personal_access_token = "None"
 
@@ -504,7 +505,7 @@ class GitRequires(ops.Object):
                 "strict_host_key_checking": content.ssh_strict_host_key_checking,
             }
 
-        return dict(sorted(git_connection_information.items(), key=lambda item: item[0]))
+        return git_connection_information
 
     def get_git_connection_information(self) -> dict[int, dict]:
         """Git connection information for all relations."""
@@ -525,17 +526,21 @@ class GitProvides(ops.Object):
     ):
         super().__init__(charm, relation_name)
 
+        self._charm = charm
+        self._relation_name = relation_name
+
         for event in [
             charm.on[relation_name].relation_joined,
             charm.on[relation_name].relation_broken,
         ]:
             self.framework.observe(event, callback)
 
-        if not charm.model.relations.get(relation_name):
-            self._provider_handler = None
-            return
-
         self._provider_handler = GitProviderEventHandler(charm, relation_name)
+
+    @property
+    def relations_exists(self) -> bool:
+        """Indicates if git relations present."""
+        return bool(self._charm.model.relations[self._relation_name])
 
     def update_git_connection_info(self, connection_info: dict[str, str]):
         """Update git connection info appropriately in all relations.
@@ -552,7 +557,7 @@ class GitProvides(ops.Object):
                 - ssh_private_key (if authentication_method == "ssh")
                 - ssh_strict_host_key_checking (optional if authentication_method == "ssh")
         """
-        if not self._provider_handler:
+        if not self.relations_exists:
             return
 
         if not all(key in GitProviderModel.model_fields for key in connection_info):
