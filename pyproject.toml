@@ -43,6 +43,11 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+asyncio_mode = "auto"
+addopts = "--tb=native --capture=no --log-cli-level=INFO"
+
 # Linting tools configuration
 [tool.ruff]
 line-length = 99
