@@ -13,6 +13,8 @@ import time
 import jubilant
 import pytest
 
+import constants
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,6 +89,30 @@ def mock_requirer_charm():
 
     if len(charm_paths) > 1:
         path_list = ", ".join(str(path) for path in charm_paths)
-        raise ValueError(f"More than one mock requirer .charm file in current directory: {path_list}")
+        raise ValueError(
+            f"More than one mock requirer .charm file in current directory: {path_list}"
+        )
 
     return charm_paths[0]
+
+
+@pytest.fixture(scope="module")
+def personal_access_token_secret(juju: jubilant.Juju):
+    """Add secret for personal access token."""
+    return juju.add_secret(
+        name="personal_access_token_secret",
+        content={
+            constants.PERSONAL_ACCESS_TOKEN: "token1",
+        },
+    )
+
+
+@pytest.fixture(scope="module")
+def ssh_private_key_secret(juju: jubilant.Juju):
+    """Add secret for ssh private key."""
+    return juju.add_secret(
+        name="ssh_private_key",
+        content={
+            constants.SSH_PRIVATE_KEY: "key2",
+        },
+    )

@@ -295,9 +295,9 @@ class TestGitProvides:
             assert self.get_juju_log_line("INFO", ops.StartEvent) in provider_context.juju_log
 
             # should no-op without errors
-            manager.charm.provider.update_git_connection_info({"path": "new/path"})
+            manager.charm.provider.set_git_connection_info({"path": "new/path"})
 
-    def test_update_git_connection_info_invalid(
+    def test_set_git_connection_info_invalid(
         self, provider_context, provider_state, provider_git_relation
     ):
         """Ensure proper handling of invalid git connection info updates."""
@@ -312,24 +312,24 @@ class TestGitProvides:
             )
 
             with pytest.raises(ValueError, match="Invalid keys in provided connection info"):
-                manager.charm.provider.update_git_connection_info({"invalid_key": "invalid_value"})
+                manager.charm.provider.set_git_connection_info({"invalid_key": "invalid_value"})
 
             with pytest.raises(ValueError, match="Prohibited fields in provided connection info"):
-                manager.charm.provider.update_git_connection_info(
+                manager.charm.provider.set_git_connection_info(
                     {"secret_personal_access_token": "random"}
                 )
 
             with pytest.raises(
                 ValueError, match="Missing required credentials fields in provided connection info"
             ):
-                manager.charm.provider.update_git_connection_info(
+                manager.charm.provider.set_git_connection_info(
                     {"authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value}
                 )
 
             with pytest.raises(
                 ValueError, match="Unexpected SSH fields in provided connection info"
             ):
-                manager.charm.provider.update_git_connection_info(
+                manager.charm.provider.set_git_connection_info(
                     {
                         "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
                         "username": "test_username",
@@ -341,14 +341,14 @@ class TestGitProvides:
             with pytest.raises(
                 ValueError, match="Missing required SSH fields in provided connection info"
             ):
-                manager.charm.provider.update_git_connection_info(
+                manager.charm.provider.set_git_connection_info(
                     {"authentication_method": git.AuthenticationMethodEnum.SSH.value}
                 )
 
             with pytest.raises(
                 ValueError, match="Unexpected credentials fields in provided connection info"
             ):
-                manager.charm.provider.update_git_connection_info(
+                manager.charm.provider.set_git_connection_info(
                     {
                         "authentication_method": git.AuthenticationMethodEnum.SSH.value,
                         "ssh_private_key": "test_private_key",
@@ -356,7 +356,7 @@ class TestGitProvides:
                     }
                 )
 
-    def test_update_git_connection_info_on_empty_relation(self, provider_context, provider_state):
+    def test_set_git_connection_info_on_empty_relation(self, provider_context, provider_state):
         """Ensure proper update of git connection info on an empty relation."""
         empty_provider_git_relation = ops.testing.Relation(GIT_RELATION_INTERFACE)
 
@@ -369,7 +369,7 @@ class TestGitProvides:
 
             # Should not surface pydantic.ValidationError when building model to update
             # with provided dictionary
-            manager.charm.provider.update_git_connection_info({"repository_url": "test_repo_url"})
+            manager.charm.provider.set_git_connection_info({"repository_url": "test_repo_url"})
 
             assert (
                 manager.charm.model.get_relation(GIT_RELATION_INTERFACE)
@@ -378,7 +378,7 @@ class TestGitProvides:
                 == "test_repo_url"
             )
 
-    def test_update_git_connection_info(
+    def test_set_git_connection_info(
         self, provider_context, provider_state, provider_git_relation
     ):
         """Ensure correct partial update of git connection info."""
@@ -392,29 +392,39 @@ class TestGitProvides:
                 == "my/directory"
             )
 
-            manager.charm.provider.update_git_connection_info({"path": "new/path"})
+            with unittest.mock.patch(
+                "charms.data_platform_libs.v1.data_interfaces.CachedSecret.set_content"
+            ) as mock_set_content:
+                manager.charm.provider.set_git_connection_info(
+                    {
+                        "repository_url": "test-url",
+                        "path": "new/path",
+                    }
+                )
 
-            assert (
-                manager.charm.model.get_relation(GIT_RELATION_INTERFACE)
-                .data[manager.charm.app]
-                .get("path")
-                == "new/path"
-            )
+                relation_data = manager.charm.model.get_relation(GIT_RELATION_INTERFACE).data[
+                    manager.charm.app
+                ]
 
-            secret_id = provider_state.get_relation(provider_git_relation.id).local_app_data[
-                "secret-personal-access-token"
-            ]
-            secret = manager.charm.model.get_secret(id=secret_id)
+                assert relation_data.get("repository-url") == "test-url"
+                assert relation_data.get("path") == "new/path"
+                assert relation_data.get("authentication-method") is None  # should be reset
 
-            assert (
-                secret.get_content().get("personal-access-token") == "custom-personal-access-token"
-            )
+                (
+                    mock_set_content.assert_called_with({"personal-access-token": "None"}),
+                    "Secret content not 'nullified' due to missing authentication_method",
+                )
 
             with unittest.mock.patch(
                 "charms.data_platform_libs.v1.data_interfaces.CachedSecret.set_content"
             ) as mock_set_content:
-                manager.charm.provider.update_git_connection_info(
-                    {"personal_access_token": "new-personal-access-token"}
+                manager.charm.provider.set_git_connection_info(
+                    {
+                        "repository_url": "test-url-2",
+                        "authentication_method": "credentials",
+                        "username": "test-user-2",
+                        "personal_access_token": "new-personal-access-token",
+                    }
                 )
 
                 mock_set_content.assert_called_with(

@@ -29,3 +29,7 @@ parts:
 actions:
   get-git-connection-information:
     description: Get the git connection information.
+
+requires:
+  git:
+    interface: git

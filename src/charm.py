@@ -56,6 +56,7 @@ class GitIntegratorCharm(ops.CharmBase):
                 label=constants.PERSONAL_ACCESS_TOKEN,
             )
         except (ops.SecretNotFoundError, ops.ModelError):
+            logger.exception("Issue retrieving personal access token secret")
             raise ExitWithStatusError(
                 constants.INVALID_PERSONAL_ACCESS_TOKEN_SECRET_MESSAGE, ops.BlockedStatus
             )
@@ -77,6 +78,7 @@ class GitIntegratorCharm(ops.CharmBase):
                 label=constants.SSH_PRIVATE_KEY,
             )
         except (ops.SecretNotFoundError, ops.ModelError):
+            logger.exception("Issue retrieving ssh private key secret")
             raise ExitWithStatusError(constants.INVALID_SSH_PRIVATE_KEY_MESSAGE, ops.BlockedStatus)
 
         ssh_private_key = secret.get_content().get(constants.SSH_PRIVATE_KEY)
@@ -166,7 +168,7 @@ class GitIntegratorCharm(ops.CharmBase):
                 constants.SSH_STRICT_HOST_KEY_CHECKING_CONFIG
             ]
 
-        self._git_provider.update_git_connection_info(git_connection_information)
+        self._git_provider.set_git_connection_info(git_connection_information)
 
     def _reconcile(self, _) -> None:
         """Reconciler method for events handled by this charm."""
