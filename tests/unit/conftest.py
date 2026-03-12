@@ -76,7 +76,7 @@ CREDENTIALS_GIT_CONNECTION_INFORMATION = {
     "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
     "credentials": {
         "username": "custom-user",
-        "personal_access_token": "custom-persona-access-token",
+        "personal_access_token": "custom-personal-access-token",
     },
 }
 
