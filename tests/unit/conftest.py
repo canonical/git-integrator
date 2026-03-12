@@ -1,4 +1,4 @@
-# Copyright 2025 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
 import charms.git_integrator.v0.git as git
@@ -57,32 +57,28 @@ def credentials_data(personal_access_token_secret):
     }
 
 
-SSH_GIT_CONNECTION_INFORMATION = sorted(
-    {
-        "repository_url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking_ref": "custom/branch",
-        "authentication_method": git.AuthenticationMethodEnum.SSH.value,
-        "ssh": {
-            "private_key": "custom-ssh-private-key",
-            "strict_host_key_checking": False,
-        },
-    }
-)
+SSH_GIT_CONNECTION_INFORMATION = {
+    "repository_url": "https://github.com/org/repo",
+    "path": "my/directory",
+    "tracking_ref": "custom/branch",
+    "authentication_method": git.AuthenticationMethodEnum.SSH.value,
+    "ssh": {
+        "private_key": "custom-ssh-private-key",
+        "strict_host_key_checking": False,
+    },
+}
 
 
-CREDENTIALS_GIT_CONNECTION_INFORMATION = sorted(
-    {
-        "repository_url": "https://github.com/org/repo",
-        "path": "my/directory",
-        "tracking_ref": "custom/branch",
-        "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
-        "credentials": {
-            "username": "custom-user",
-            "personal_access_token": "custom-persona-access-token",
-        },
-    }
-)
+CREDENTIALS_GIT_CONNECTION_INFORMATION = {
+    "repository_url": "https://github.com/org/repo",
+    "path": "my/directory",
+    "tracking_ref": "custom/branch",
+    "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
+    "credentials": {
+        "username": "custom-user",
+        "personal_access_token": "custom-persona-access-token",
+    },
+}
 
 
 @pytest.fixture(scope="function")

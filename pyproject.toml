@@ -29,12 +29,6 @@ unit = [
     "ops[testing]",
     "pytest",
 ]
-# Dependencies of integration tests
-integration = [
-    "jubilant",
-    "pytest",
-    "PyYAML",
-]
 
 # Testing tools configuration
 [tool.coverage.run]
@@ -42,11 +36,6 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
-
-[tool.pytest.ini_options]
-minversion = "6.0"
-log_cli_level = "INFO"
-addopts = "--tb=native --verbose --capture=no --log-cli-level=INFO"
 
 # Linting tools configuration
 [tool.ruff]
