@@ -38,7 +38,7 @@ class MockGitRequirerCharmCharm(ops.CharmBase):
         """Reconciler mock that logs invoker event + set unit status."""
         logger.info(f"§Handled event: {event}")
 
-        if not self.model.relations[GIT_RELATION]:
+        if not self.model.relations.get(GIT_RELATION):
             self.unit.status = ops.BlockedStatus("Missing relation(s) with Git Integrator")
             return
 
@@ -50,7 +50,7 @@ class MockGitRequirerCharmCharm(ops.CharmBase):
 
     def get_git_connection_information(self, event: ops.ActionEvent) -> None:
         """Surface of git connection info from the relation."""
-        if not self.model.relations[GIT_RELATION]:
+        if not self.model.relations.get(GIT_RELATION):
             event.fail(f"Missing {GIT_RELATION} relation")
             return
 

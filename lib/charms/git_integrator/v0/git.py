@@ -352,7 +352,7 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
 
         return {
             relation.id: model
-            for relation in self.charm.model.relations[self.relation_name]
+            for relation in self.charm.model.relations.get(self.relation_name, [])
             if (model := _build_model(self.interface, relation)) is not None
         }
 
@@ -480,7 +480,7 @@ class GitRequires(ops.Object):
     @property
     def relations(self) -> list[ops.Relation]:
         """Relations for the git interface."""
-        return list(self._charm.model.relations[self.relation_name])
+        return list(self._charm.model.relations.get(self.relation_name, []))
 
     def is_ready(self, relation: typing.Optional[ops.Relation] = None) -> bool:
         """Readiness of a relation's git connection information."""
@@ -525,7 +525,7 @@ class GitProvides(ops.Object):
     @property
     def relations_exists(self) -> bool:
         """Indicates if git relations present."""
-        return bool(self._charm.model.relations[self._relation_name])
+        return bool(self._charm.model.relations.get(self._relation_name))
 
     def set_git_connection_info(self, connection_info: dict[str, str]):  # noqa: C901
         """Set git connection info appropriately in all relations.
