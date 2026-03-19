@@ -46,10 +46,8 @@ EXPECTED_GIT_CONNECTION_INFORMATION_CREDENTIALS = {
     "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
     "path": "path1",
     "tracking_ref": "ref1",
-    "credentials": {
-        "username": "user1",
-        "personal_access_token": "token1",
-    },
+    "credentials_username": "user1",
+    "credentials_personal_access_token": "token1",
 }
 
 EXPECTED_GIT_CONNECTION_INFORMATION_SSH = {
@@ -57,11 +55,27 @@ EXPECTED_GIT_CONNECTION_INFORMATION_SSH = {
     "authentication_method": git.AuthenticationMethodEnum.SSH.value,
     "path": "path2",
     "tracking_ref": "ref2",
-    "ssh": {
-        "private_key": "key2",
-        "strict_host_key_checking": True,
-    },
+    "ssh_private_key": "key2",
+    "ssh_strict_host_key_checking": True,
 }
+
+EXPECTED_GIT_CONNECTION_INFORMATION = {
+    "git-integrator0": EXPECTED_GIT_CONNECTION_INFORMATION_MINIMAL,
+    "git-integrator1": EXPECTED_GIT_CONNECTION_INFORMATION_CREDENTIALS,
+    "git-integrator2": EXPECTED_GIT_CONNECTION_INFORMATION_SSH,
+}
+
+
+def _assert_all_requirers(
+    juju: jubilant.Juju,
+    expected: dict = EXPECTED_GIT_CONNECTION_INFORMATION,
+    requirer_indices: list[int] = [0, 1, 2],
+) -> None:
+    """Helper to assert expected git connection information from git relations."""
+    for i in requirer_indices:
+        action = juju.run(f"git-requirer{i}/0", "get-git-connection-information")
+
+        assert json.loads(action.results["git-connection-information"]) == expected
 
 
 def test_deploy(
@@ -109,14 +123,7 @@ def test_git_connection_information(juju: jubilant.Juju):
     """Test proper propagation of git connection information to requirers."""
     logger.info("Ensuring proper propagation to all related requirers charms")
 
-    for i in range(2):
-        action = juju.run(f"git-requirer{i}/0", "get-git-connection-information")
-
-        assert json.loads(action.results["git-connection-information"]) == {
-            "git-integrator0": EXPECTED_GIT_CONNECTION_INFORMATION_MINIMAL,
-            "git-integrator1": EXPECTED_GIT_CONNECTION_INFORMATION_CREDENTIALS,
-            "git-integrator2": EXPECTED_GIT_CONNECTION_INFORMATION_SSH,
-        }
+    _assert_all_requirers(juju)
 
 
 def test_proper_propagation_upon_config_change(juju: jubilant.Juju):
@@ -132,17 +139,9 @@ def test_proper_propagation_upon_config_change(juju: jubilant.Juju):
 
     logger.info("Checking proper propagation of update")
 
-    for i in range(2):
-        action = juju.run(f"git-requirer{i}/0", "get-git-connection-information")
-
-        assert json.loads(action.results["git-connection-information"]) == {
-            "git-integrator0": {
-                **EXPECTED_GIT_CONNECTION_INFORMATION_MINIMAL,
-                "path": "path0",
-            },
-            "git-integrator1": EXPECTED_GIT_CONNECTION_INFORMATION_CREDENTIALS,
-            "git-integrator2": EXPECTED_GIT_CONNECTION_INFORMATION_SSH,
-        }
+    expected = copy.deepcopy(EXPECTED_GIT_CONNECTION_INFORMATION)
+    expected["git-integrator0"]["path"] = "path0"
+    _assert_all_requirers(juju, expected=expected)
 
     logger.info("Revert config of the same git integrator charm")
 
@@ -155,14 +154,7 @@ def test_proper_propagation_upon_config_change(juju: jubilant.Juju):
 
     logger.info("Checking proper revert of update")
 
-    for i in range(2):
-        action = juju.run(f"git-requirer{i}/0", "get-git-connection-information")
-
-        assert json.loads(action.results["git-connection-information"]) == {
-            "git-integrator0": EXPECTED_GIT_CONNECTION_INFORMATION_MINIMAL,
-            "git-integrator1": EXPECTED_GIT_CONNECTION_INFORMATION_CREDENTIALS,
-            "git-integrator2": EXPECTED_GIT_CONNECTION_INFORMATION_SSH,
-        }
+    _assert_all_requirers(juju)
 
 
 def test_consistency_with_one_relation_removed(juju: jubilant.Juju):
@@ -178,20 +170,11 @@ def test_consistency_with_one_relation_removed(juju: jubilant.Juju):
 
     logger.info("Checking proper access to git connection information")
 
-    expected_git_connection_information = {
-        "git-integrator0": EXPECTED_GIT_CONNECTION_INFORMATION_MINIMAL,
-        "git-integrator1": EXPECTED_GIT_CONNECTION_INFORMATION_CREDENTIALS,
-        "git-integrator2": EXPECTED_GIT_CONNECTION_INFORMATION_SSH,
-    }
+    expected_git_requirer0 = copy.deepcopy(EXPECTED_GIT_CONNECTION_INFORMATION)
+    expected_git_requirer0.pop("git-integrator0")
+    _assert_all_requirers(juju, expected=expected_git_requirer0, requirer_indices=[0])
 
-    for i in range(2):
-        action = juju.run(f"git-requirer{i}/0", "get-git-connection-information")
-
-        expected_action_results = copy.deepcopy(expected_git_connection_information)
-        if i == 0:
-            del expected_action_results["git-integrator0"]
-
-        assert json.loads(action.results["git-connection-information"]) == expected_action_results
+    _assert_all_requirers(juju, requirer_indices=[1, 2])
 
     logger.info("Adding relation git-integrator0 <-> git-requirer0")
 
@@ -204,7 +187,4 @@ def test_consistency_with_one_relation_removed(juju: jubilant.Juju):
 
     logger.info("Checking proper access to git connection information")
 
-    for i in range(2):
-        action = juju.run(f"git-requirer{i}/0", "get-git-connection-information")
-
-        assert json.loads(action.results["git-connection-information"]) == expected_action_results
+    _assert_all_requirers(juju)

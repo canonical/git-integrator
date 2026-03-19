@@ -13,7 +13,6 @@ import charms.git_integrator.v0.git as git
 import ops
 import ops.testing
 import pytest
-from conftest import CREDENTIALS_GIT_CONNECTION_INFORMATION, SSH_GIT_CONNECTION_INFORMATION
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +164,7 @@ class TestGitRequires:
             assert manager.charm.requirer.get_git_connection_information() == {}
             assert all(
                 manager.charm.requirer.get_git_connection_information_for_relation(relation_id)
-                == {}
+                is None
                 for relation_id in relation_ids
             )
 
@@ -175,6 +174,8 @@ class TestGitRequires:
         requirer_state,
         requirer_credentials_relation,
         requirer_ssh_relation,
+        credentials_provider_model,
+        ssh_provider_model,
     ):
         """Ensure valid access to git connection."""
         with requirer_context(
@@ -189,20 +190,20 @@ class TestGitRequires:
             )
 
             assert manager.charm.requirer.get_git_connection_information() == {
-                requirer_credentials_relation.id: CREDENTIALS_GIT_CONNECTION_INFORMATION,
-                requirer_ssh_relation.id: SSH_GIT_CONNECTION_INFORMATION,
+                requirer_credentials_relation.id: credentials_provider_model,
+                requirer_ssh_relation.id: ssh_provider_model,
             }
             assert (
                 manager.charm.requirer.get_git_connection_information_for_relation(
                     requirer_credentials_relation.id
                 )
-                == CREDENTIALS_GIT_CONNECTION_INFORMATION
+                == credentials_provider_model
             )
             assert (
                 manager.charm.requirer.get_git_connection_information_for_relation(
                     requirer_ssh_relation.id
                 )
-                == SSH_GIT_CONNECTION_INFORMATION
+                == ssh_provider_model
             )
 
     def test_ssh_private_key_secret_changed(
@@ -213,6 +214,8 @@ class TestGitRequires:
         requirer_credentials_relation,
         ssh_private_key_secret,
         personal_access_token_secret,
+        credentials_provider_model,
+        ssh_provider_model,
     ):
         """Ensure valid access to git connection with ssh key when secret changed."""
         requirer_context.run(
@@ -227,8 +230,7 @@ class TestGitRequires:
             requirer_state, secrets=[updated_secret, personal_access_token_secret]
         )
 
-        ssh_info = SSH_GIT_CONNECTION_INFORMATION
-        ssh_info["ssh"]["private_key"] = "updated-ssh-private-key"
+        ssh_provider_model.ssh_private_key = "updated-ssh-private-key"
 
         with requirer_context(
             requirer_context.on.secret_changed(updated_secret), updated_requirer_state
@@ -240,20 +242,20 @@ class TestGitRequires:
                 in requirer_context.juju_log
             )
             assert manager.charm.requirer.get_git_connection_information() == {
-                requirer_credentials_relation.id: CREDENTIALS_GIT_CONNECTION_INFORMATION,
-                requirer_ssh_relation.id: ssh_info,
+                requirer_credentials_relation.id: credentials_provider_model,
+                requirer_ssh_relation.id: ssh_provider_model,
             }
             assert (
                 manager.charm.requirer.get_git_connection_information_for_relation(
                     requirer_credentials_relation.id
                 )
-                == CREDENTIALS_GIT_CONNECTION_INFORMATION
+                == credentials_provider_model
             )
             assert (
                 manager.charm.requirer.get_git_connection_information_for_relation(
                     requirer_ssh_relation.id
                 )
-                == ssh_info
+                == ssh_provider_model
             )
 
     def test_git_relation_breaking(
@@ -262,6 +264,7 @@ class TestGitRequires:
         requirer_state,
         requirer_ssh_relation,
         requirer_credentials_relation,
+        credentials_provider_model,
     ):
         """Ensure reconciler callback invoked upon relation breaking."""
         with requirer_context(
@@ -275,7 +278,7 @@ class TestGitRequires:
             )
 
             assert manager.charm.requirer.get_git_connection_information() == {
-                requirer_credentials_relation.id: CREDENTIALS_GIT_CONNECTION_INFORMATION
+                requirer_credentials_relation.id: credentials_provider_model,
             }
 
 
@@ -316,7 +319,7 @@ class TestGitProvides:
 
             with pytest.raises(ValueError, match="Prohibited fields in provided connection info"):
                 manager.charm.provider.set_git_connection_info(
-                    {"secret_personal_access_token": "random"}
+                    {"secret_credentials_personal_access_token": "random"}
                 )
 
             with pytest.raises(
@@ -332,8 +335,8 @@ class TestGitProvides:
                 manager.charm.provider.set_git_connection_info(
                     {
                         "authentication_method": git.AuthenticationMethodEnum.CREDENTIALS.value,
-                        "username": "test_username",
-                        "personal_access_token": "test_personal_access_token",
+                        "credentials_username": "test_username",
+                        "credentials_personal_access_token": "test_personal_access_token",
                         "ssh_private_key": "test_private_key",
                     }
                 )
@@ -352,7 +355,7 @@ class TestGitProvides:
                     {
                         "authentication_method": git.AuthenticationMethodEnum.SSH.value,
                         "ssh_private_key": "test_private_key",
-                        "username": "test_username",
+                        "credentials_username": "test_username",
                     }
                 )
 
@@ -411,7 +414,9 @@ class TestGitProvides:
                 assert relation_data.get("authentication-method") is None  # should be reset
 
                 (
-                    mock_set_content.assert_called_with({"personal-access-token": "None"}),
+                    mock_set_content.assert_called_with(
+                        {"credentials-personal-access-token": "None"}
+                    ),
                     "Secret content not 'nullified' due to missing authentication_method",
                 )
 
@@ -422,13 +427,13 @@ class TestGitProvides:
                     {
                         "repository_url": "test-url-2",
                         "authentication_method": "credentials",
-                        "username": "test-user-2",
-                        "personal_access_token": "new-personal-access-token",
+                        "credentials_username": "test-user-2",
+                        "credentials_personal_access_token": "new-personal-access-token",
                     }
                 )
 
                 mock_set_content.assert_called_with(
-                    {"personal-access-token": "new-personal-access-token"}
+                    {"credentials-personal-access-token": "new-personal-access-token"}
                 )
 
     def test_git_relation_broken(self, provider_context, provider_state, provider_git_relation):

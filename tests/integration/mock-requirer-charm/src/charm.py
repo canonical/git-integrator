@@ -58,9 +58,11 @@ class MockGitRequirerCharmCharm(ops.CharmBase):
             {
                 "git-connection-information": json.dumps(
                     {
-                        self.model.get_relation(
-                            GIT_RELATION, relation_id=relation_id
-                        ).app.name: connection_information
+                        self.model.get_relation(GIT_RELATION, relation_id=relation_id).app.name: {
+                            key: value
+                            for key, value in connection_information
+                            if value and not key.startswith("secret") and key != "request_id"
+                        }
                         for relation_id, connection_information in self.git_requirer.get_git_connection_information().items()  # noqa: E501
                     }
                 ),

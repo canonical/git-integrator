@@ -89,14 +89,45 @@ class GitIntegratorCharm(ops.CharmBase):
 
         return ssh_private_key
 
-    def _check_required_configs(self):  # noqa: C901
-        """Check if required configurations present."""
-        if not self.config:
+    def _check_credentials_configs(self):
+        """Validations for credentials related configs.
+
+        Raises ExitWithStatusError with BlockedStatus if username is missing, or
+        if the personal_access_token cannot be retrieved from a juju user secret.
+        """
+        if not self.config.get(constants.CREDENTIALS_USERNAME_CONFIG):
+            raise ExitWithStatusError(constants.MISSING_USERNAME_MESSAGE, ops.BlockedStatus)
+
+        if not self.config.get(constants.CREDENTIALS_PERSONAL_ACCESS_TOKEN_SECRET_CONFIG):
             raise ExitWithStatusError(
-                constants.WAITING_FOR_CONFIGURATION_MESSAGE,
+                constants.MISSING_PERSONAL_ACCESS_TOKEN_SECRET_MESSAGE,
                 ops.BlockedStatus,
             )
 
+        self._personal_access_token  # property implements validity checks
+
+    def _check_ssh_configs(self):
+        """Validations for SSH related configs.
+
+        Raises ExitWithStatusError with BlockedStatus if the personal_access_token
+        cannot be retrieved from a juju user secret.
+        """
+        if not self.config.get(constants.SSH_PRIVATE_KEY_SECRET_CONFIG):
+            raise ExitWithStatusError(
+                constants.MISSING_SSH_PRIVATE_KEY_SECRET_MESSAGE,
+                ops.BlockedStatus,
+            )
+
+        self._ssh_private_key  # property implements validity checks
+
+    def _check_required_configs(self):
+        """Check if required configurations present.
+
+        Raises ExitWithStatusError with BlockedStatus if repository_url is missing,
+        if authentication_method is set to an unrecognised value, or if the
+        auth-method-specific checks fail.  When authentication_method is unset
+        the charm is valid with no authentication credentials.
+        """
         if not self.config.get(constants.REPOSITORY_URL_CONFIG):
             raise ExitWithStatusError(
                 constants.MISSING_REPOSITORY_URL_MESSAGE,
@@ -107,32 +138,14 @@ class GitIntegratorCharm(ops.CharmBase):
 
         if authentication_method and authentication_method not in git.AuthenticationMethodEnum:
             raise ExitWithStatusError(
-                constants.INVALID_AUTHENTICAITON_MESSAGE,
+                constants.INVALID_AUTHENTICATION_MESSAGE,
                 ops.BlockedStatus,
             )
 
         if authentication_method == git.AuthenticationMethodEnum.CREDENTIALS:
-            if not self.config.get(constants.CREDENTIALS_USERNAME_CONFIG):
-                raise ExitWithStatusError(constants.MISSING_USERNAME_MESSAGE, ops.BlockedStatus)
-
-            if not self.config.get(constants.CREDENTIALS_PERSONAL_ACCESS_TOKEN_SECRET_CONFIG):
-                raise ExitWithStatusError(
-                    constants.MISSING_PERSONAL_ACCESS_TOKEN_SECRET_MESSAGE,
-                    ops.BlockedStatus,
-                )
-
-            if not self._personal_access_token:
-                pass  # property implements validity checks
-
-        if authentication_method == git.AuthenticationMethodEnum.SSH:
-            if not self.config.get(constants.SSH_PRIVATE_KEY_SECRET_CONFIG):
-                raise ExitWithStatusError(
-                    constants.MISSING_SSH_PRIVATE_KEY_SECRET_MESSAGE,
-                    ops.BlockedStatus,
-                )
-
-            if not self._ssh_private_key:
-                pass  # property implements validity checks
+            self._check_credentials_configs()
+        elif authentication_method == git.AuthenticationMethodEnum.SSH:
+            self._check_ssh_configs()
 
     def _update_git_connection_information(self) -> None:
         """Update git connection information to share with related apps."""
@@ -155,10 +168,12 @@ class GitIntegratorCharm(ops.CharmBase):
             self.config.get(constants.AUTHENTICATION_METHOD_CONFIG)
             == git.AuthenticationMethodEnum.CREDENTIALS
         ):
-            git_connection_information["username"] = self.config[
+            git_connection_information["credentials_username"] = self.config[
                 constants.CREDENTIALS_USERNAME_CONFIG
             ]
-            git_connection_information["personal_access_token"] = self._personal_access_token
+            git_connection_information["credentials_personal_access_token"] = (
+                self._personal_access_token
+            )
         elif (
             self.config.get(constants.AUTHENTICATION_METHOD_CONFIG)
             == git.AuthenticationMethodEnum.SSH

@@ -10,6 +10,10 @@ default:
 clean-mock-charm-libs:
 	rm -rf tests/integration/mock-requirer-charm/lib
 
+[private]
+clean-charms:
+	find . -type f -name '*.charm' -delete
+
 # Run lint
 lint: (clean-mock-charm-libs)
 	uv tool run --python 3.12 tox -e lint
@@ -21,13 +25,15 @@ format: (clean-mock-charm-libs)
 # Run integration tests
 integration debug="": (clean)
 	#!/usr/bin/bash
+	set -euo pipefail
+
 	charmcraft pack
 
 	cp -r lib tests/integration/mock-requirer-charm/lib
 
 	trap 'just clean-mock-charm-libs' EXIT
 
-	cd tests/integration/mock-requirer-charm && charmcraft pack && cd -
+	charmcraft pack --project-dir tests/integration/mock-requirer-charm
 
 	pdb_options=$(if [ -n "${debug}" ]; then echo "--pdb"; fi)
 
@@ -38,7 +44,7 @@ unit:
 	uv tool run --python 3.12 tox -e unit
 
 # Clean up test environment
-clean: (clean-mock-charm-libs)
+clean: (clean-mock-charm-libs) (clean-charms)
 	juju destroy-model --force --destroy-storage --no-prompt test || true
 
 # Get system state for debugging

@@ -81,9 +81,7 @@ def mock_requirer_charm():
         return charm_path
 
     # Modify below if you're building for multiple bases or architectures.
-    charm_paths = list(
-        pathlib.Path("./tests/integration/mock-requirer-charm").glob("mock-requirer-charm*.charm")
-    )
+    charm_paths = list(pathlib.Path(".").glob("mock-requirer-charm*.charm"))
     if not charm_paths:
         raise FileNotFoundError("No mock requirer .charm file in current directory")
 

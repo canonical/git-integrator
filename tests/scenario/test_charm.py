@@ -35,16 +35,6 @@ def test_missing_git_relation(context, state_with_credentials):
     assert state_out.unit_status == ops.ActiveStatus()
 
 
-def test_missing_config(context, state_with_credentials):
-    """Test missing config."""
-    state_with_empty_config = dataclasses.replace(state_with_credentials, config={})
-
-    state_out = context.run(context.on.start(), state_with_empty_config)
-
-    assert state_out.unit_status == ops.BlockedStatus(constants.WAITING_FOR_CONFIGURATION_MESSAGE)
-    assert state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data == {}
-
-
 def test_missing_repository_url_config(context, state_with_credentials):
     """Test missing repository url config."""
     config = state_with_credentials.config.copy()
@@ -67,7 +57,7 @@ def test_invalid_authentication_method(context, state_with_credentials):
 
     state_out = context.run(context.on.config_changed(), state)
 
-    assert state_out.unit_status == ops.BlockedStatus(constants.INVALID_AUTHENTICAITON_MESSAGE)
+    assert state_out.unit_status == ops.BlockedStatus(constants.INVALID_AUTHENTICATION_MESSAGE)
 
 
 def test_missing_username(context, state_with_credentials):
@@ -173,18 +163,14 @@ def test_credentials(context, state_with_credentials, credentials_data):
     """Test setting valid config for credentials."""
     state_out = context.run(context.on.config_changed(), state_with_credentials)
 
-    credentials_data.pop("secret-personal-access-token")
+    credentials_data.pop("secret-credentials-personal-access-token")
 
     assert state_out.unit_status == ops.ActiveStatus()
-    assert sorted(
-        {
-            key: value
-            for key, value in state_out.get_relations(GIT_RELATION_ENDPOINT)[
-                0
-            ].local_app_data.items()
-            if key != "secret-personal-access-token"
-        }
-    ) == sorted(credentials_data)
+    assert {
+        key: value
+        for key, value in state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data.items()
+        if key != "secret-credentials-personal-access-token"
+    } == credentials_data
 
     updated_config = state_out.config.copy()
     updated_config[constants.REPOSITORY_URL_CONFIG] = "another-url"
@@ -204,10 +190,14 @@ def test_ssh(context, state_with_ssh, ssh_data):
     """Test setting valid config for ssh."""
     state_out = context.run(context.on.config_changed(), state_with_ssh)
 
+    ssh_data.pop("secret-ssh-private-key")
+
     assert state_out.unit_status == ops.ActiveStatus()
-    assert sorted(state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data) == sorted(
-        ssh_data
-    )
+    assert {
+        key: value
+        for key, value in state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data.items()
+        if key != "secret-ssh-private-key"
+    } == ssh_data
 
     updated_config = {
         **state_out.config,

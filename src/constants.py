@@ -14,12 +14,11 @@ CREDENTIALS_PERSONAL_ACCESS_TOKEN_SECRET_CONFIG = "credentials_personal_access_t
 SSH_PRIVATE_KEY_SECRET_CONFIG = "ssh_private_key_secret"
 SSH_STRICT_HOST_KEY_CHECKING_CONFIG = "ssh_strict_host_key_checking"
 
-PERSONAL_ACCESS_TOKEN = "personal-access-token"
+PERSONAL_ACCESS_TOKEN = "credentials-personal-access-token"
 SSH_PRIVATE_KEY = "ssh-private-key"
 
-WAITING_FOR_CONFIGURATION_MESSAGE = "Waiting for configuration"
 MISSING_REPOSITORY_URL_MESSAGE = "Missing required configuration 'repository_url'"
-INVALID_AUTHENTICAITON_MESSAGE = "Invalid authentication method"
+INVALID_AUTHENTICATION_MESSAGE = "Invalid authentication method"
 MISSING_USERNAME_MESSAGE = "Missing username for authentication credentials"
 MISSING_PERSONAL_ACCESS_TOKEN_SECRET_MESSAGE = (
     "Missing personal access token secret for authentication credentials"
