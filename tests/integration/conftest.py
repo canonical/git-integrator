@@ -1,0 +1,116 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+#
+# The integration tests use the Jubilant library. See https://documentation.ubuntu.com/jubilant/
+# To learn more about testing, see https://documentation.ubuntu.com/ops/latest/explanation/testing/
+
+import logging
+import os
+import pathlib
+import sys
+import time
+
+import jubilant
+import pytest
+
+import constants
+
+logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(scope="module")
+def juju(request: pytest.FixtureRequest):
+    """Create a temporary Juju model for running tests."""
+    if "JUJU_MODEL" in os.environ:
+        juju = jubilant.Juju(wait_timeout=10 * 60)
+
+        juju.add_model(os.environ["JUJU_MODEL"], config={"update-status-hook-interval": "10s"})
+
+        yield juju
+
+        if request.session.testsfailed:
+            logger.info("Collecting Juju logs...")
+            time.sleep(0.5)  # Wait for Juju to process logs.
+            log = juju.debug_log(limit=1000)
+            print(log, end="", file=sys.stderr)
+
+        return
+
+    with jubilant.temp_model(config={"update-status-hook-interval": "10s"}) as juju:
+        juju.wait_timeout = 10 * 60
+
+        yield juju
+
+        if request.session.testsfailed:
+            logger.info("Collecting Juju logs...")
+            time.sleep(0.5)  # Wait for Juju to process logs.
+            log = juju.debug_log(limit=1000)
+            print(log, end="", file=sys.stderr)
+
+
+@pytest.fixture(scope="session")
+def charm():
+    """Return the path of the charm under test."""
+    if "CHARM_PATH" in os.environ:
+        charm_path = pathlib.Path(os.environ["CHARM_PATH"])
+        if not charm_path.exists():
+            raise FileNotFoundError(f"Charm does not exist: {charm_path}")
+        return charm_path
+
+    # Modify below if you're building for multiple bases or architectures.
+    charm_paths = list(pathlib.Path(".").glob("git-integrator*.charm"))
+    if not charm_paths:
+        raise FileNotFoundError("No git integrator .charm file in current directory")
+
+    if len(charm_paths) > 1:
+        path_list = ", ".join(str(path) for path in charm_paths)
+        raise ValueError(
+            f"More than one git integrator .charm file in current directory: {path_list}"
+        )  # noqa: E501
+
+    return charm_paths[0]
+
+
+@pytest.fixture(scope="session")
+def mock_requirer_charm():
+    """Build and return the mock core charm to use in tests."""
+    if "MOCK_REQUIRER_CHARM_PATH" in os.environ:
+        charm_path = pathlib.Path(os.environ["MOCK_REQUIRER_CHARM_PATH"])
+        if not charm_path.exists():
+            raise FileNotFoundError(f"Mock requirer charm does not exist: {charm_path}")
+        return charm_path
+
+    # Modify below if you're building for multiple bases or architectures.
+    charm_paths = list(pathlib.Path(".").glob("mock-requirer-charm*.charm"))
+    if not charm_paths:
+        raise FileNotFoundError("No mock requirer .charm file in current directory")
+
+    if len(charm_paths) > 1:
+        path_list = ", ".join(str(path) for path in charm_paths)
+        raise ValueError(
+            f"More than one mock requirer .charm file in current directory: {path_list}"
+        )
+
+    return charm_paths[0]
+
+
+@pytest.fixture(scope="module")
+def personal_access_token_secret(juju: jubilant.Juju):
+    """Add secret for personal access token."""
+    return juju.add_secret(
+        name="personal_access_token_secret",
+        content={
+            constants.PERSONAL_ACCESS_TOKEN: "token1",
+        },
+    )
+
+
+@pytest.fixture(scope="module")
+def ssh_private_key_secret(juju: jubilant.Juju):
+    """Add secret for ssh private key."""
+    return juju.add_secret(
+        name="ssh_private_key",
+        content={
+            constants.SSH_PRIVATE_KEY: "key2",
+        },
+    )

@@ -1,0 +1,63 @@
+# This file configures Charmcraft.
+# See https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/
+type: charm
+name: git-integrator
+title: Git Integrator
+summary: A provider charm for git credentials.
+description: |
+  Git Integrator is an integrator charm for specifying and managing git credentials
+  to consumer charms. Store the credentials centrally in the integrator charm and
+  relate consumer charms as needed.
+
+# Documentation:
+# https://documentation.ubuntu.com/charmcraft/stable/howto/build-guides/select-platforms/
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+parts:
+  charm:
+    plugin: uv
+    source: .
+    build-snaps:
+      - astral-uv
+  files:
+    plugin: dump
+    source: .
+    stage:
+      - LICENSE
+
+config:
+  options:
+    repository_url:
+      type: string
+      description: Git repository URL
+    path:
+      type: string
+      description: Path within the repo that is in scope
+    tracking_ref:
+      type: string
+      description: Tracking reference of the repository
+    authentication_method:
+      type: string
+      description: |
+        Method used to authenticate with the git repository.
+        Non-null options include: credentials, ssh
+    credentials_username:
+      type: string
+      description: Username when using credentials authentication
+    credentials_personal_access_token_secret:
+      type: secret
+      description: |
+        URI of secret with personal access token when using credentials authentication
+    ssh_private_key_secret:
+      type: secret
+      description: |
+        URI of secret with SSH private key when using SSH authentication
+    ssh_strict_host_key_checking:
+      type: boolean
+      description: Strict host key checking when using SSH authentication
+
+provides:
+  git:
+    interface: git

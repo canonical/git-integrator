@@ -109,7 +109,7 @@ class AuthenticationMethodEnum(enum.StrEnum):
 PersonalAccessTokenStr = typing.Annotated[
     data_interfaces.OptionalSecretStr,
     pydantic.Field(default=None, exclude=True),
-    "personal-access-token",
+    "credentials-personal-access-token",
 ]
 
 SSHPrivateKeyStr = typing.Annotated[
@@ -122,23 +122,43 @@ SSHPrivateKeyStr = typing.Annotated[
 class GitProviderModel(data_interfaces.BaseCommonModel):
     """Provider side of the git relation interface."""
 
-    repository_url: str = pydantic.Field()
-    path: str | None = pydantic.Field(default=None)
-    tracking_ref: str | None = pydantic.Field(default=None)
+    repository_url: str | None = None
+    path: str | None = pydantic.Field(default=None, tag="resettable")
+    tracking_ref: str | None = pydantic.Field(default=None, tag="resettable")
 
-    authentication_method: AuthenticationMethodEnum | None = pydantic.Field(default=None)
+    authentication_method: AuthenticationMethodEnum | None = pydantic.Field(
+        default=None, tag="resettable"
+    )
 
-    username: str | None = pydantic.Field(default=None)
-    personal_access_token: PersonalAccessTokenStr = pydantic.Field(default=None)
-    secret_personal_access_token: data_interfaces.SecretString = pydantic.Field(default=None)
+    credentials_username: str | None = pydantic.Field(default=None, tag="resettable")
+    credentials_personal_access_token: PersonalAccessTokenStr
+    secret_credentials_personal_access_token: data_interfaces.SecretString | None = pydantic.Field(
+        default=None, tag="restricted"
+    )
 
-    ssh_private_key: SSHPrivateKeyStr = pydantic.Field(default=None)
-    secret_ssh_private_key: data_interfaces.SecretString = pydantic.Field(default=None)
-    ssh_strict_host_key_checking: bool | None = pydantic.Field(default=None)
+    ssh_private_key: SSHPrivateKeyStr
+    secret_ssh_private_key: data_interfaces.SecretString | None = pydantic.Field(
+        default=None, tag="restricted"
+    )
+    ssh_strict_host_key_checking: bool | None = pydantic.Field(default=None, tag="resettable")
 
     # hack to enable databag diff computation with data_interfaces v1 charm lib
-    request_id: str = pydantic.Field(default="fixed_request_id", exclude=True)
+    request_id: str = pydantic.Field(default="fixed_request_id", exclude=True, tag="restricted")
 
+
+RESETTABLE_PROVIDER_MODEL_FIELDS = [
+    field_name
+    for field_name, field_info in GitProviderModel.model_fields.items()
+    if (schema := getattr(field_info, "json_schema_extra")) is not None
+    and schema.get("tag") == "resettable"
+]
+
+RESTRICTED_PROVIDER_MODEL_FIELDS = [
+    field_name
+    for field_name, field_info in GitProviderModel.model_fields.items()
+    if (schema := getattr(field_info, "json_schema_extra")) is not None
+    and schema.get("tag") == "restricted"
+]
 
 TGitProviderModel = typing.TypeVar("TGitProviderModel", bound=GitProviderModel)
 
@@ -232,19 +252,7 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
         _diff: data_interfaces.Diff,
         content: GitProviderModel,
     ):
-        if any(
-            key in _diff.added or key in _diff.changed
-            for key in [
-                "repository-url",
-                "path",
-                "tracking-ref",
-                "authentication-method",
-                "username",
-                "personal-access-token",
-                "ssh-private-key",
-                "ssh-strict-host-key-checking",
-            ]
-        ):
+        if any(key in _diff.added or key in _diff.changed for key in GitProviderModel.__fields__):
             getattr(self.on, "git_connection_information_updated").emit(
                 event.relation, app=event.app, unit=event.unit, content=content
             )
@@ -342,12 +350,11 @@ class GitRequirerEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
             except pydantic.ValidationError:
                 return None
 
-        models = {
-            relation.id: _build_model(self.interface, relation)
-            for relation in self.charm.model.relations[self.relation_name]
+        return {
+            relation.id: model
+            for relation in self.charm.model.relations.get(self.relation_name, [])
+            if (model := _build_model(self.interface, relation)) is not None
         }
-
-        return {key: value for key, value in models.items() if value is not None}
 
 
 class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGitProviderModel]):
@@ -373,15 +380,15 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
         pass
 
     def update_git_connection_info(  # noqa: C901
-        self,
-        connection_info: dict[str, str],
+        self, connection_info: dict[str, str], fields_to_reset: list[str]
     ):
         """Update data to send to related charms.
 
         Do nothing if no relations present, unit is not leader, or no connection info
         provided. Otherwise, build pydantic model from existing relation data or a new
         model if no data set yet in relation, and write the model to the relation with
-        provided updates in connection_info.
+        provided updates in connection_info. Assumes inputted connection_info is well
+        formatted.
         """
         if not self.interface.relations:
             return
@@ -392,12 +399,6 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
         if not self.charm.unit.is_leader():
             return
 
-        filtered_connection_info = {
-            key: value
-            for key, value in connection_info.items()
-            if not key.startswith("secret") and key != "request_id"
-        }
-
         for relation in self.interface.relations:
             model = None
 
@@ -405,26 +406,36 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
                 try:
                     model = self.interface.build_model(
                         relation.id, GitProviderModel, component=self.charm.app
-                    ).model_copy(update=filtered_connection_info)
+                    ).model_copy(update=connection_info)
 
                     # set secret fields to "None" to nullify, as setting to None
                     # results in deletion of all revisions for underlying juju secret.
                     # if the field is set to a value down the line, relation id to secret
-                    # mapping conflcits may be encountered in data_interfaces.
+                    # mapping conflicts may be encountered in data_interfaces.
                     # also, downstream related charms may encounter errors if they
                     # concurrently access the secret while its revisions are removed
+                    authentication_method = connection_info.get("authentication_method")
+
                     if (
-                        connection_info.get("authentication_method")
-                        == AuthenticationMethodEnum.CREDENTIALS
+                        not authentication_method
+                        or authentication_method == AuthenticationMethodEnum.CREDENTIALS
                     ):
-                        model.ssh_private_key = "None"
+                        if model.secret_ssh_private_key:
+                            model.ssh_private_key = "None"
+
                         model.ssh_strict_host_key_checking = None
-                    elif (
-                        connection_info.get("authentication_method")
-                        == AuthenticationMethodEnum.SSH
+
+                    if (
+                        not authentication_method
+                        or authentication_method == AuthenticationMethodEnum.SSH
                     ):
                         model.username = None
-                        model.personal_access_token = "None"
+
+                        if model.secret_credentials_personal_access_token:
+                            model.credentials_personal_access_token = "None"
+
+                    for field in fields_to_reset:
+                        model[field] = None
 
                 except pydantic.ValidationError as e:
                     if not all(error.get("type") == "missing" for error in e.errors()):
@@ -433,7 +444,7 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
                         raise e
 
             if not model:
-                model = GitProviderModel(**filtered_connection_info)
+                model = GitProviderModel.model_construct(**connection_info)
 
             self.interface.write_model(relation.id, model)
 
@@ -469,50 +480,24 @@ class GitRequires(ops.Object):
     @property
     def relations(self) -> list[ops.Relation]:
         """Relations for the git interface."""
-        return list(self._charm.model.relations[self.relation_name])
+        return list(self._charm.model.relations.get(self.relation_name, []))
 
-    @property
-    def _provider_content(self) -> dict[int, GitProviderModel]:
-        """Mapping of relation id to provider content for all upstream git integrators."""
-        return self._requirer_handler.provider_content
+    def is_ready(self, relation: typing.Optional[ops.Relation] = None) -> bool:
+        """Readiness of a relation's git connection information."""
+        if relation:
+            return self._requirer_handler.provider_content.get(relation.id) is not None
 
-    def get_git_connection_information_for_relation(self, relation_id: int) -> dict:
+        return bool(self._requirer_handler.provider_content)
+
+    def get_git_connection_information_for_relation(
+        self, relation_id: int
+    ) -> typing.Optional[GitProviderModel]:
         """The git connection information for a relation."""
-        content = self._provider_content.get(relation_id)
-        if not content:
-            return {}
+        return self._requirer_handler.provider_content.get(relation_id)
 
-        git_connection_information = {
-            "repository_url": content.repository_url,
-            "authentication_method": content.authentication_method.value,
-        }
-
-        if content.path:
-            git_connection_information["path"] = content.path
-
-        if content.tracking_ref:
-            git_connection_information["tracking_ref"] = content.tracking_ref
-
-        if content.authentication_method == AuthenticationMethodEnum.CREDENTIALS:
-            git_connection_information["credentials"] = {
-                "username": content.username,
-                "personal_access_token": content.personal_access_token,
-            }
-
-        if content.authentication_method == AuthenticationMethodEnum.SSH:
-            git_connection_information["ssh"] = {
-                "private_key": content.ssh_private_key,
-                "strict_host_key_checking": content.ssh_strict_host_key_checking,
-            }
-
-        return git_connection_information
-
-    def get_git_connection_information(self) -> dict[int, dict]:
+    def get_git_connection_information(self) -> dict[int, GitProviderModel]:
         """Git connection information for all relations."""
-        return {
-            relation_id: self.get_git_connection_information_for_relation(relation_id)
-            for relation_id in self._provider_content
-        }
+        return self._requirer_handler.provider_content
 
 
 class GitProvides(ops.Object):
@@ -540,10 +525,10 @@ class GitProvides(ops.Object):
     @property
     def relations_exists(self) -> bool:
         """Indicates if git relations present."""
-        return bool(self._charm.model.relations[self._relation_name])
+        return bool(self._charm.model.relations.get(self._relation_name))
 
-    def update_git_connection_info(self, connection_info: dict[str, str]):
-        """Update git connection info appropriately in all relations.
+    def set_git_connection_info(self, connection_info: dict[str, str]):  # noqa: C901
+        """Set git connection info appropriately in all relations.
 
         Args:
             connection_info (dict[str, str]): fields to update in the pydantic model
@@ -552,24 +537,21 @@ class GitProvides(ops.Object):
                 - path
                 - tracking_ref
                 - authentication_method
-                - username (if authentication_method == "credentials")
-                - personal_access_token (if authentication_method == "credentials")
+                - credentials_username (if authentication_method == "credentials")
+                - credentials_personal_access_token (if authentication_method == "credentials")
                 - ssh_private_key (if authentication_method == "ssh")
                 - ssh_strict_host_key_checking (optional if authentication_method == "ssh")
         """
         if not self.relations_exists:
             return
 
-        if not all(key in GitProviderModel.model_fields for key in connection_info):
+        if not all(key in GitProviderModel.__fields__ for key in connection_info):
             raise ValueError("Invalid keys in provided connection info")
 
-        if any(
-            key in connection_info
-            for key in ["secret_personal_access_token", "secret_ssh_private_key", "request_id"]
-        ):
+        if any(key in connection_info for key in RESTRICTED_PROVIDER_MODEL_FIELDS):
             raise ValueError("Prohibited fields in provided connection info")
 
-        credentials_fields = ["username", "personal_access_token"]
+        credentials_fields = ["credentials_username", "credentials_personal_access_token"]
         ssh_fields = ["ssh_private_key", "ssh_strict_host_key_checking"]
 
         if connection_info.get("authentication_method") == AuthenticationMethodEnum.CREDENTIALS:
@@ -586,4 +568,13 @@ class GitProvides(ops.Object):
             if any(key in connection_info for key in credentials_fields):
                 raise ValueError("Unexpected credentials fields in provided connection info")
 
-        self._provider_handler.update_git_connection_info(connection_info)
+        field_to_reset = [
+            field for field in RESETTABLE_PROVIDER_MODEL_FIELDS if field not in connection_info
+        ]
+
+        if connection_info.get("authentication_method"):
+            connection_info["authentication_method"] = AuthenticationMethodEnum(
+                connection_info["authentication_method"]
+            )
+
+        self._provider_handler.update_git_connection_info(connection_info, field_to_reset)
