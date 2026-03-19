@@ -411,7 +411,7 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
                     # set secret fields to "None" to nullify, as setting to None
                     # results in deletion of all revisions for underlying juju secret.
                     # if the field is set to a value down the line, relation id to secret
-                    # mapping conflcits may be encountered in data_interfaces.
+                    # mapping conflicts may be encountered in data_interfaces.
                     # also, downstream related charms may encounter errors if they
                     # concurrently access the secret while its revisions are removed
                     authentication_method = connection_info.get("authentication_method")
