@@ -92,7 +92,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 logger = logging.getLogger(__name__)
 
@@ -480,7 +480,7 @@ class GitRequires(ops.Object):
     @property
     def relations(self) -> list[ops.Relation]:
         """Relations for the git interface."""
-        return list(self._charm.model.relations.get(self.relation_name, []))
+        return list(self._charm.model.relations.get(self._relation_name, []))
 
     def is_ready(self, relation: typing.Optional[ops.Relation] = None) -> bool:
         """Readiness of a relation's git connection information."""
