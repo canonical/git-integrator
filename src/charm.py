@@ -89,6 +89,28 @@ class GitIntegratorCharm(ops.CharmBase):
 
         return ssh_private_key
 
+    @property
+    def _ssh_passphrase(self) -> str:
+        """SSH key passphrase for authentication."""
+        try:
+            secret = self.model.get_secret(
+                id=self.config[constants.SSH_PASSPHRASE_SECRET_CONFIG],
+                label=constants.SSH_PASSPHRASE,
+            )
+        except (ops.SecretNotFoundError, ops.ModelError):
+            logger.exception("Issue retrieving ssh passphrase secret")
+            raise ExitWithStatusError(
+                constants.INVALID_SSH_PASSPHRASE_SECRET_MESSAGE, ops.BlockedStatus
+            )
+
+        ssh_passphrase = secret.get_content().get(constants.SSH_PASSPHRASE)
+        if not ssh_passphrase:
+            raise ExitWithStatusError(
+                constants.MISSING_SSH_PASSPHRASE_IN_SECRET_MESSAGE, ops.BlockedStatus
+            )
+
+        return ssh_passphrase
+
     def _check_credentials_configs(self):
         """Validations for credentials related configs.
 
@@ -109,8 +131,9 @@ class GitIntegratorCharm(ops.CharmBase):
     def _check_ssh_configs(self):
         """Validations for SSH related configs.
 
-        Raises ExitWithStatusError with BlockedStatus if the personal_access_token
-        cannot be retrieved from a juju user secret.
+        Raises ExitWithStatusError with BlockedStatus if the ssh_private_key
+        cannot be retrieved from a juju user secret, or if the ssh_passphrase
+        secret is configured but invalid.
         """
         if not self.config.get(constants.SSH_PRIVATE_KEY_SECRET_CONFIG):
             raise ExitWithStatusError(
@@ -119,6 +142,9 @@ class GitIntegratorCharm(ops.CharmBase):
             )
 
         self._ssh_private_key  # property implements validity checks
+
+        if self.config.get(constants.SSH_PASSPHRASE_SECRET_CONFIG):
+            self._ssh_passphrase  # property implements validity checks
 
     def _check_required_configs(self):
         """Check if required configurations present.
@@ -182,6 +208,12 @@ class GitIntegratorCharm(ops.CharmBase):
             git_connection_information["ssh_strict_host_key_checking"] = self.config[
                 constants.SSH_STRICT_HOST_KEY_CHECKING_CONFIG
             ]
+
+            if self.config.get(constants.SSH_PASSPHRASE_SECRET_CONFIG):
+                git_connection_information["ssh_passphrase"] = self._ssh_passphrase
+
+            if self.config.get(constants.SSH_PORT_CONFIG):
+                git_connection_information["ssh_port"] = self.config[constants.SSH_PORT_CONFIG]
 
         self._git_provider.set_git_connection_info(git_connection_information)
 

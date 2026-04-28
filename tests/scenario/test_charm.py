@@ -216,3 +216,63 @@ def test_ssh(context, state_with_ssh, ssh_data):
     assert relation_data["path"] == "new/path"
     assert relation_data["tracking-ref"] == "new/branch"
     assert relation_data["ssh-strict-host-key-checking"] == "false"
+
+
+@pytest.mark.parametrize("exception", [ops.SecretNotFoundError, ops.ModelError])
+def test_invalid_ssh_passphrase_secret(context, state_with_ssh_passphrase_and_port, exception):
+    """Test error while accessing the ssh passphrase secret."""
+    original_get_secret = ops.Model.get_secret
+
+    def _get_secret_side_effect(self_model, *args, **kwargs):
+        if kwargs.get("label") == constants.SSH_PASSPHRASE:
+            raise exception
+        return original_get_secret(self_model, *args, **kwargs)
+
+    with unittest.mock.patch.object(
+        ops.Model, "get_secret", autospec=True, side_effect=_get_secret_side_effect
+    ):
+        state_out = context.run(context.on.config_changed(), state_with_ssh_passphrase_and_port)
+
+    assert state_out.unit_status == ops.BlockedStatus(
+        constants.INVALID_SSH_PASSPHRASE_SECRET_MESSAGE
+    )
+    assert state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data == {}
+
+
+def test_missing_ssh_passphrase_in_secret(
+    context, state_with_ssh_passphrase_and_port, ssh_private_key_secret
+):
+    """Test for missing ssh passphrase in provided secret."""
+    empty_secret = ops.testing.Secret({})
+    config = state_with_ssh_passphrase_and_port.config.copy()
+    config[constants.SSH_PASSPHRASE_SECRET_CONFIG] = empty_secret.id
+
+    state = dataclasses.replace(
+        state_with_ssh_passphrase_and_port,
+        secrets=[ssh_private_key_secret, empty_secret],
+        config=config,
+    )
+
+    state_out = context.run(context.on.config_changed(), state)
+
+    assert state_out.unit_status == ops.BlockedStatus(
+        constants.MISSING_SSH_PASSPHRASE_IN_SECRET_MESSAGE
+    )
+    assert state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data == {}
+
+
+def test_ssh_with_passphrase_and_port(
+    context, state_with_ssh_passphrase_and_port, ssh_data_with_passphrase_and_port
+):
+    """Test setting valid config for ssh with passphrase and port."""
+    state_out = context.run(context.on.config_changed(), state_with_ssh_passphrase_and_port)
+
+    ssh_data_with_passphrase_and_port.pop("secret-ssh-private-key")
+    ssh_data_with_passphrase_and_port.pop("secret-ssh-passphrase")
+
+    assert state_out.unit_status == ops.ActiveStatus()
+    assert {
+        key: value
+        for key, value in state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data.items()
+        if key not in ("secret-ssh-private-key", "secret-ssh-passphrase")
+    } == ssh_data_with_passphrase_and_port
