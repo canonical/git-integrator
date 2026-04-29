@@ -206,6 +206,47 @@ class TestGitRequires:
                 == ssh_provider_model
             )
 
+    def test_ssh_passphrase_and_port_trigger_reconciler(
+        self,
+        requirer_context,
+        requirer_credentials_relation,
+        credentials_provider_model,
+        ssh_private_key_secret,
+        ssh_passphrase_secret,
+        personal_access_token_secret,
+        ssh_data_with_passphrase_and_port,
+        ssh_provider_model_with_passphrase_and_port,
+    ):
+        """Ensure ssh_port and ssh_passphrase fields in relation data trigger the reconciler."""
+        requirer_ssh_relation_with_extras = ops.testing.Relation(
+            "git",
+            interface="git",
+            remote_app_data=ssh_data_with_passphrase_and_port,
+        )
+        requirer_state = ops.testing.State(
+            leader=True,
+            relations=[requirer_credentials_relation, requirer_ssh_relation_with_extras],
+            secrets=[personal_access_token_secret, ssh_private_key_secret, ssh_passphrase_secret],
+        )
+
+        with requirer_context(
+            requirer_context.on.relation_changed(requirer_ssh_relation_with_extras),
+            requirer_state,
+        ) as manager:
+            manager.run()
+
+            assert (
+                self.get_juju_log_line("INFO", git.GitConnectionInformationUpdatedEvent)
+                in requirer_context.juju_log
+            )
+
+            assert (
+                manager.charm.requirer.get_git_connection_information_for_relation(
+                    requirer_ssh_relation_with_extras.id
+                )
+                == ssh_provider_model_with_passphrase_and_port
+            )
+
     def test_ssh_private_key_secret_changed(
         self,
         requirer_context,
@@ -435,6 +476,59 @@ class TestGitProvides:
                 mock_set_content.assert_called_with(
                     {"credentials-personal-access-token": "new-personal-access-token"}
                 )
+
+    def test_set_git_connection_info_with_ssh_passphrase_and_port(
+        self,
+        provider_context,
+        ssh_private_key_secret,
+        ssh_passphrase_secret,
+    ):
+        """Ensure GitProvides correctly sets ssh_passphrase and ssh_port."""
+        # Start with an SSH relation that already references both secrets, so that
+        # set_git_connection_info follows the update-existing-secret path (CachedSecret).
+        ssh_provider_relation = ops.testing.Relation(
+            GIT_RELATION_INTERFACE,
+            interface=GIT_RELATION_INTERFACE,
+            local_app_data={
+                "repository-url": "https://github.com/org/repo",
+                "path": "my/directory",
+                "tracking-ref": "custom/branch",
+                "authentication-method": git.AuthenticationMethodEnum.SSH.value,
+                "secret-ssh-private-key": ssh_private_key_secret.id,
+                "secret-ssh-passphrase": ssh_passphrase_secret.id,
+                "ssh-strict-host-key-checking": "false",
+                "ssh-port": "2222",
+            },
+        )
+        provider_state = ops.testing.State(
+            leader=True,
+            relations=[ssh_provider_relation],
+            secrets=[ssh_private_key_secret, ssh_passphrase_secret],
+        )
+
+        with provider_context(
+            provider_context.on.relation_changed(ssh_provider_relation), provider_state
+        ) as manager:
+            manager.run()
+
+            with unittest.mock.patch(
+                "charms.data_platform_libs.v1.data_interfaces.CachedSecret.set_content"
+            ) as mock_set_content:
+                manager.charm.provider.set_git_connection_info(
+                    {
+                        "authentication_method": git.AuthenticationMethodEnum.SSH.value,
+                        "ssh_private_key": "updated-ssh-private-key",
+                        "ssh_passphrase": "updated-ssh-passphrase",
+                        "ssh_port": 3333,
+                    }
+                )
+
+                relation_data = manager.charm.model.get_relation(GIT_RELATION_INTERFACE).data[
+                    manager.charm.app
+                ]
+
+                assert relation_data.get("ssh-port") == "3333"
+                mock_set_content.assert_any_call({"ssh-passphrase": "updated-ssh-passphrase"})
 
     def test_git_relation_broken(self, provider_context, provider_state, provider_git_relation):
         """Ensure invoke of reconciler callback on git integratorrelation broken."""
