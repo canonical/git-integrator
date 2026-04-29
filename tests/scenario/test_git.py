@@ -482,23 +482,13 @@ class TestGitProvides:
         provider_context,
         ssh_private_key_secret,
         ssh_passphrase_secret,
+        ssh_data_with_passphrase_and_port,
     ):
         """Ensure GitProvides correctly sets ssh_passphrase and ssh_port."""
-        # Start with an SSH relation that already references both secrets, so that
-        # set_git_connection_info follows the update-existing-secret path (CachedSecret).
         ssh_provider_relation = ops.testing.Relation(
             GIT_RELATION_INTERFACE,
             interface=GIT_RELATION_INTERFACE,
-            local_app_data={
-                "repository-url": "https://github.com/org/repo",
-                "path": "my/directory",
-                "tracking-ref": "custom/branch",
-                "authentication-method": git.AuthenticationMethodEnum.SSH.value,
-                "secret-ssh-private-key": ssh_private_key_secret.id,
-                "secret-ssh-passphrase": ssh_passphrase_secret.id,
-                "ssh-strict-host-key-checking": "false",
-                "ssh-port": "2222",
-            },
+            local_app_data=ssh_data_with_passphrase_and_port,
         )
         provider_state = ops.testing.State(
             leader=True,
