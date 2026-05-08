@@ -206,6 +206,100 @@ class TestGitRequires:
                 == ssh_provider_model
             )
 
+    def test_ssh_port_triggers_reconciler(
+        self,
+        requirer_context,
+        requirer_state,
+        requirer_credentials_relation,
+        ssh_data_with_passphrase_and_port,
+        ssh_provider_model_with_passphrase_and_port,
+    ):
+        """Ensure ssh_port field (databag value) in relation data triggers the reconciler."""
+        ssh_data_port_only = {
+            k: v
+            for k, v in ssh_data_with_passphrase_and_port.items()
+            if k != "secret-ssh-passphrase"
+        }
+        requirer_ssh_relation_with_port = ops.testing.Relation(
+            "git",
+            interface="git",
+            remote_app_data=ssh_data_port_only,
+        )
+        state = dataclasses.replace(
+            requirer_state,
+            relations=[requirer_credentials_relation, requirer_ssh_relation_with_port],
+        )
+
+        expected_model = ssh_provider_model_with_passphrase_and_port.model_copy(
+            update={"ssh_passphrase": None, "secret_ssh_passphrase": None}
+        )
+
+        with requirer_context(
+            requirer_context.on.relation_changed(requirer_ssh_relation_with_port),
+            state,
+        ) as manager:
+            manager.run()
+
+            assert (
+                self.get_juju_log_line("INFO", git.GitConnectionInformationUpdatedEvent)
+                in requirer_context.juju_log
+            )
+
+            assert (
+                manager.charm.requirer.get_git_connection_information_for_relation(
+                    requirer_ssh_relation_with_port.id
+                )
+                == expected_model
+            )
+
+    def test_ssh_passphrase_triggers_reconciler(
+        self,
+        requirer_context,
+        requirer_state,
+        requirer_credentials_relation,
+        ssh_passphrase_secret,
+        personal_access_token_secret,
+        ssh_private_key_secret,
+        ssh_data_with_passphrase_and_port,
+        ssh_provider_model_with_passphrase_and_port,
+    ):
+        """Ensure ssh_passphrase secret in relation data triggers the reconciler."""
+        ssh_data_passphrase_only = {
+            k: v for k, v in ssh_data_with_passphrase_and_port.items() if k != "ssh-port"
+        }
+        requirer_ssh_relation_with_passphrase = ops.testing.Relation(
+            "git",
+            interface="git",
+            remote_app_data=ssh_data_passphrase_only,
+        )
+        state = dataclasses.replace(
+            requirer_state,
+            relations=[requirer_credentials_relation, requirer_ssh_relation_with_passphrase],
+            secrets=[personal_access_token_secret, ssh_private_key_secret, ssh_passphrase_secret],
+        )
+
+        expected_model = ssh_provider_model_with_passphrase_and_port.model_copy(
+            update={"ssh_port": None}
+        )
+
+        with requirer_context(
+            requirer_context.on.relation_changed(requirer_ssh_relation_with_passphrase),
+            state,
+        ) as manager:
+            manager.run()
+
+            assert (
+                self.get_juju_log_line("INFO", git.GitConnectionInformationUpdatedEvent)
+                in requirer_context.juju_log
+            )
+
+            assert (
+                manager.charm.requirer.get_git_connection_information_for_relation(
+                    requirer_ssh_relation_with_passphrase.id
+                )
+                == expected_model
+            )
+
     def test_ssh_private_key_secret_changed(
         self,
         requirer_context,
@@ -435,6 +529,50 @@ class TestGitProvides:
                 mock_set_content.assert_called_with(
                     {"credentials-personal-access-token": "new-personal-access-token"}
                 )
+
+    def test_set_git_connection_info_with_ssh_passphrase_and_port(
+        self,
+        provider_context,
+        provider_state,
+        ssh_private_key_secret,
+        ssh_passphrase_secret,
+        ssh_data_with_passphrase_and_port,
+    ):
+        """Ensure GitProvides correctly sets ssh_passphrase and ssh_port."""
+        ssh_provider_relation = ops.testing.Relation(
+            GIT_RELATION_INTERFACE,
+            interface=GIT_RELATION_INTERFACE,
+            local_app_data=ssh_data_with_passphrase_and_port,
+        )
+        state = dataclasses.replace(
+            provider_state,
+            relations=[ssh_provider_relation],
+            secrets=[ssh_private_key_secret, ssh_passphrase_secret],
+        )
+
+        with provider_context(
+            provider_context.on.relation_changed(ssh_provider_relation), state
+        ) as manager:
+            manager.run()
+
+            with unittest.mock.patch(
+                "charms.data_platform_libs.v1.data_interfaces.CachedSecret.set_content"
+            ) as mock_set_content:
+                manager.charm.provider.set_git_connection_info(
+                    {
+                        "authentication_method": git.AuthenticationMethodEnum.SSH.value,
+                        "ssh_private_key": "updated-ssh-private-key",
+                        "ssh_passphrase": "updated-ssh-passphrase",
+                        "ssh_port": 3333,
+                    }
+                )
+
+                relation_data = manager.charm.model.get_relation(GIT_RELATION_INTERFACE).data[
+                    manager.charm.app
+                ]
+
+                assert relation_data.get("ssh-port") == "3333"
+                mock_set_content.assert_any_call({"ssh-passphrase": "updated-ssh-passphrase"})
 
     def test_git_relation_broken(self, provider_context, provider_state, provider_git_relation):
         """Ensure invoke of reconciler callback on git integratorrelation broken."""

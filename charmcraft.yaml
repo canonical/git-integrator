@@ -54,9 +54,16 @@ config:
       type: secret
       description: |
         URI of secret with SSH private key when using SSH authentication
+    ssh_passphrase_secret:
+      type: secret
+      description: |
+        URI of secret with SSH key passphrase when using SSH authentication
     ssh_strict_host_key_checking:
       type: boolean
       description: Strict host key checking when using SSH authentication
+    ssh_port:
+      type: int
+      description: SSH port for git repository authentication (default is 22)
 
 provides:
   git:
