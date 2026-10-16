@@ -379,7 +379,6 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
     ):
         """Builds an Git provider event handler."""
         super().__init__(charm, relation_name, unique_key)
-
         self.component = self.charm.app
 
         self.interface = data_interfaces.OpsRelationRepositoryInterface(
@@ -388,6 +387,10 @@ class GitProviderEventHandler(data_interfaces.EventHandlers, typing.Generic[TGit
 
     @typing_extensions.override
     def _on_relation_changed_event(self, event: ops.RelationChangedEvent) -> None:
+        pass
+
+    @typing_extensions.override
+    def _on_secret_changed_event(self, event: ops.SecretChangedEvent) -> None:
         pass
 
     def update_git_connection_info(  # noqa: C901
