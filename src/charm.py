@@ -38,6 +38,7 @@ class GitIntegratorCharm(ops.CharmBase):
             self.on.start,
             self.on.config_changed,
             self.on.update_status,
+            self.on.secret_changed,
         ]:
             self.framework.observe(event, self._reconcile)
 
@@ -61,7 +62,9 @@ class GitIntegratorCharm(ops.CharmBase):
                 constants.INVALID_PERSONAL_ACCESS_TOKEN_SECRET_MESSAGE, ops.BlockedStatus
             )
 
-        personal_access_token = secret.get_content().get(constants.PERSONAL_ACCESS_TOKEN)
+        personal_access_token = secret.get_content(refresh=True).get(
+            constants.PERSONAL_ACCESS_TOKEN
+        )
         if not personal_access_token:
             raise ExitWithStatusError(
                 constants.MISSING_PERSONAL_ACCESS_TOKEN_IN_SECRET_MESSAGE, ops.BlockedStatus
@@ -81,7 +84,7 @@ class GitIntegratorCharm(ops.CharmBase):
             logger.exception("Issue retrieving ssh private key secret")
             raise ExitWithStatusError(constants.INVALID_SSH_PRIVATE_KEY_MESSAGE, ops.BlockedStatus)
 
-        ssh_private_key = secret.get_content().get(constants.SSH_PRIVATE_KEY)
+        ssh_private_key = secret.get_content(refresh=True).get(constants.SSH_PRIVATE_KEY)
         if not ssh_private_key:
             raise ExitWithStatusError(
                 constants.MISSING_SSH_PRIVATE_KEY_IN_SECRET_MESSAGE, ops.BlockedStatus
@@ -103,7 +106,7 @@ class GitIntegratorCharm(ops.CharmBase):
                 constants.INVALID_SSH_PASSPHRASE_SECRET_MESSAGE, ops.BlockedStatus
             )
 
-        ssh_passphrase = secret.get_content().get(constants.SSH_PASSPHRASE)
+        ssh_passphrase = secret.get_content(refresh=True).get(constants.SSH_PASSPHRASE)
         if not ssh_passphrase:
             raise ExitWithStatusError(
                 constants.MISSING_SSH_PASSPHRASE_IN_SECRET_MESSAGE, ops.BlockedStatus
