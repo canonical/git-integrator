@@ -261,6 +261,60 @@ def test_missing_ssh_passphrase_in_secret(
     assert state_out.get_relations(GIT_RELATION_ENDPOINT)[0].local_app_data == {}
 
 
+def test_ssh_private_key_secret_rotation_updates_relation_data(
+    context, state_with_ssh, ssh_private_key_secret
+):
+    """A rotated ssh-private-key secret must be republished on the git relation."""
+    rotated_key = "rotated-ssh-private-key"
+    rotated_secret = dataclasses.replace(
+        ssh_private_key_secret,
+        tracked_content={constants.SSH_PRIVATE_KEY: "custom-ssh-private-key"},
+        latest_content={constants.SSH_PRIVATE_KEY: rotated_key},
+    )
+    config = state_with_ssh.config.copy()
+    config[constants.SSH_PRIVATE_KEY_SECRET_CONFIG] = rotated_secret.id
+    state = dataclasses.replace(
+        state_with_ssh,
+        secrets=[rotated_secret],
+        config=config,
+    )
+
+    state_out = context.run(context.on.secret_changed(rotated_secret), state)
+
+    assert state_out.unit_status == ops.ActiveStatus()
+    app_secrets = [s for s in state_out.secrets if s.owner == "app"]
+    published = [s for s in app_secrets if constants.SSH_PRIVATE_KEY in s.tracked_content]
+    assert len(published) == 1
+    assert published[0].tracked_content[constants.SSH_PRIVATE_KEY] == rotated_key
+
+
+def test_credentials_token_secret_rotation_updates_relation_data(
+    context, state_with_credentials, personal_access_token_secret
+):
+    """A rotated PAT secret must be republished on the git relation."""
+    rotated_token = "rotated-personal-access-token"
+    rotated_secret = dataclasses.replace(
+        personal_access_token_secret,
+        tracked_content={constants.PERSONAL_ACCESS_TOKEN: "custom-personal-access-token"},
+        latest_content={constants.PERSONAL_ACCESS_TOKEN: rotated_token},
+    )
+    config = state_with_credentials.config.copy()
+    config[constants.CREDENTIALS_PERSONAL_ACCESS_TOKEN_SECRET_CONFIG] = rotated_secret.id
+    state = dataclasses.replace(
+        state_with_credentials,
+        secrets=[rotated_secret],
+        config=config,
+    )
+
+    state_out = context.run(context.on.secret_changed(rotated_secret), state)
+
+    assert state_out.unit_status == ops.ActiveStatus()
+    app_secrets = [s for s in state_out.secrets if s.owner == "app"]
+    published = [s for s in app_secrets if constants.PERSONAL_ACCESS_TOKEN in s.tracked_content]
+    assert len(published) == 1
+    assert published[0].tracked_content[constants.PERSONAL_ACCESS_TOKEN] == rotated_token
+
+
 def test_ssh_with_passphrase_and_port(
     context, state_with_ssh_passphrase_and_port, ssh_data_with_passphrase_and_port
 ):
